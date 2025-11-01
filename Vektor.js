@@ -891,19 +891,35 @@ document.addEventListener('DOMContentLoaded', () => {
                                         thumbList.appendChild(nav);
                                     }
                                     if (isMobile) {
-                                        const scroll = document.createElement('div'); scroll.className = 'apply-thumb-scroll';
-                                        slice.forEach((it, idx) => {
-                                            const globalIndex = start + idx;
-                                            const item = document.createElement('div'); item.className = 'scroll-item';
-                                            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
-                                            try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                            cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
-                                            const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb';
-                                            const label = document.createElement('div'); label.textContent = it.name || `Gambar ${globalIndex + 1}`;
-                                            item.appendChild(img); item.appendChild(cb); item.appendChild(label);
-                                            scroll.appendChild(item);
-                                        });
-                                        thumbList.appendChild(scroll);
+                                        if (sideThumbsData.length > PER_PAGE) {
+                                            const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                            sideThumbsData.forEach((it, idx) => {
+                                                const globalIndex = idx;
+                                                const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
+                                                try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                                cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
+                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                                const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                                wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                                vert.appendChild(wrapper);
+                                            });
+                                            thumbList.appendChild(vert);
+                                        } else {
+                                            const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                            slice.forEach((it, idx) => {
+                                                const globalIndex = start + idx;
+                                                const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
+                                                try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                                cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
+                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                                const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                                wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                                vert.appendChild(wrapper);
+                                            });
+                                            thumbList.appendChild(vert);
+                                        }
                                     } else {
                                         slice.forEach((it, idx) => {
                                             const globalIndex = start + idx;
@@ -973,17 +989,31 @@ document.addEventListener('DOMContentLoaded', () => {
                                             thumbList.appendChild(nav);
                                         }
                                         if (isMobile) {
-                                            const scroll = document.createElement('div'); scroll.className = 'apply-thumb-scroll';
-                                            slice.forEach((it, idx) => {
-                                                const globalIndex = start + idx;
-                                                const item = document.createElement('div'); item.className = 'scroll-item';
-                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`);
-                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`;
-                                                const info = document.createElement('div'); info.textContent = it.name || `Gambar ${globalIndex+1}`;
-                                                item.appendChild(img); item.appendChild(cb); item.appendChild(info);
-                                                scroll.appendChild(item);
-                                            });
-                                            thumbList.appendChild(scroll);
+                                            if (sideThumbsData.length > PER_PAGE) {
+                                                const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                                sideThumbsData.forEach((it, idx) => {
+                                                    const globalIndex = idx;
+                                                    const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                                    const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                                    const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                                    wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                                    vert.appendChild(wrapper);
+                                                });
+                                                thumbList.appendChild(vert);
+                                            } else {
+                                                const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                                slice.forEach((it, idx) => {
+                                                    const globalIndex = start + idx;
+                                                    const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                                    const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                                    const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                                    wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                                    vert.appendChild(wrapper);
+                                                });
+                                                thumbList.appendChild(vert);
+                                            }
                                         } else {
                                             slice.forEach((it, idx) => {
                                                 const globalIndex = start + idx;
