@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>vektor — Efek</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="Vektor.css">
+    <script defer src="Vektor.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"><i class="fas fa-magic"></i></div>
+          <div class="brand-text"><h1>vektor</h1></div>
+        </div>
+        <nav class="top-actions" aria-label="Navigasi cepat">
+          <ul class="nav-list">
+            <li><a href="vektor.html" class="nav-link">Editor</a></li>
+            <li><a href="filter.html" class="nav-link">Filter</a></li>
+            <li><a href="#efek-section" class="nav-link">Efek</a></li>
+          </ul>
+        </nav>
+      </header>
+
+      <main class="editor">
+
+        <aside class="sidebar">
+          <section class="card upload-card" aria-labelledby="upload-title">
+            <div class="card-header">
+              <h2 id="upload-title"><i class="fas fa-cloud-upload-alt"></i> Unggah</h2>
+            </div>
+            <label for="file-input" class="upload-area" id="upload-area" tabindex="0">
+              <div class="upload-icon"><i class="fas fa-image"></i></div>
+              <div class="upload-text">
+                <strong>Klik atau seret gambar</strong>
+                <small>JPG, PNG, WEBP • max 10MB</small>
+              </div>
+            </label>
+            <input type="file" id="file-input" accept="image/*" aria-label="Unggah gambar" multiple />
+          </section>
+
+          <section class="card compact" aria-labelledby="controls-title">
+            <div class="card-header">
+              <h2 id="controls-title" class="collapsible-toggle" role="button" tabindex="0" aria-expanded="false"><i class="fas fa-sliders-h"></i> Kontrol Cepat</h2>
+            </div>
+            <div class="control-row">
+              <div class="field">
+                <label for="width">Lebar (px)</label>
+                <input id="width" type="number" min="1" placeholder="Lebar" />
+              </div>
+              <div class="field">
+                <label for="height">Tinggi (px)</label>
+                <input id="height" type="number" min="1" placeholder="Tinggi" />
+              </div>
+            </div>
+            <div class="control-row">
+              <label class="checkbox-inline"><input type="checkbox" id="lock-ratio" checked /> Pertahankan rasio</label>
+            </div>
+            <div class="control-row">
+              <label for="quality">Kualitas <span id="quality-value">80%</span></label>
+              <input id="quality" type="range" min="10" max="100" value="80">
+            </div>
+            <div class="control-row">
+              <label for="format-select">Format Ekspor</label>
+              <select id="format-select" aria-label="Pilih format ekspor">
+                <option value="image/jpeg">JPEG</option>
+                <option value="image/png">PNG</option>
+                <option value="image/webp">WEBP</option>
+              </select>
+            </div>
+          </section>
+
+          <section class="card sizes-card" aria-labelledby="sizes-title">
+            <div class="card-header"><h2 id="sizes-title"><i class="fas fa-desktop"></i> Ukuran Background</h2></div>
+            <div class="background-sizes" role="list" aria-label="Ukuran Background">
+              <button class="bg-size" data-size="1920x1080" type="button" aria-pressed="false">Desktop / Laptop<br><small>1920×1080</small></button>
+              <button class="bg-size" data-size="1366x768" type="button" aria-pressed="false">Laptop (1366×768)<br><small>1366×768</small></button>
+              <button class="bg-size" data-size="1440x900" type="button" aria-pressed="false">Macbook (1440×900)<br><small>1440×900</small></button>
+              <button class="bg-size" data-size="3840x2160" type="button" aria-pressed="false">4K Desktop (3840×2160)<br><small>3840×2160</small></button>
+              <button class="bg-size" data-size="1280x720" type="button" aria-pressed="false">HD (1280×720)<br><small>1280×720</small></button>
+              <button class="bg-size" data-size="1200x800" type="button" aria-pressed="false">Browser (1200×800)<br><small>1200×800</small></button>
+              <button class="bg-size" data-size="1024x768" type="button" aria-pressed="false">Tablet Landscape<br><small>1024×768</small></button>
+              <button class="bg-size" data-size="768x1024" type="button" aria-pressed="false">Tablet Portrait<br><small>768×1024</small></button>
+              <button class="bg-size" data-size="1080x1920" type="button" aria-pressed="false">HP Portrait<br><small>1080×1920</small></button>
+            </div>
+          </section>
+
+          <section class="card recent-card" aria-labelledby="recent-title">
+            <div class="card-header"><h2 id="recent-title"><i class="fas fa-history"></i> Terakhir</h2></div>
+            <div class="recent-list" id="recent-list" aria-live="polite"></div>
+          </section>
+        </aside>
+
+        <section class="canvas-area card">
+            <div class="preview-wrap">
+                <div class="card-header">
+                    <h2><i class="fas fa-eye"></i> Pratinjau Efek</h2>
+                    <div class="canvas-actions">
+                    <button class="btn small" id="apply-btn"><i class="fas fa-check"></i> Terapkan</button>
+                    <button class="btn small" id="download-btn"><i class="fas fa-download"></i> Unduh</button>
+                    <button class="btn ghost small" id="reset-btn"><i class="fas fa-undo"></i> Reset</button>
+                    </div>
+                </div>
+                <div class="preview-container" id="preview-container">
+                    <div class="placeholder"><i class="fas fa-image"></i><p>Editor utama memiliki upload & preview — buka Editor untuk memuat gambar</p></div>
+                    <img id="image-preview" alt="Pratinjau gambar" />
+                    <canvas id="compare-canvas"></canvas>
+                </div>
+                <div class="info-bar">
+                    <div class="info">Dimensi: <span id="original-dimensions">-</span></div>
+                    <div class="info">Baru: <span id="new-dimensions">-</span></div>
+                    <div class="info">Ukuran: <span id="file-size">-</span></div>
+                    <div class="info">Format: <span id="file-format">-</span></div>
+                </div>
+            </div>
+        </section>
+
+        <aside class="sidebar right">
+          <section class="card effects-card" id="efek-section">
+            <div class="card-header"><h2><i class="fas fa-star"></i> Efek</h2></div>
+            <h3 id="effects-title" class="collapsible-toggle" role="button" tabindex="0" aria-expanded="false"><i class="fas fa-star"></i> Efek Khusus</h3>
+            <div class="filter-presets" role="list" aria-label="Efek Khusus">
+              <button class="preset active" data-effect="none" aria-pressed="true" role="listitem"><i class="fas fa-ban" aria-hidden="true"></i><span>Tidak Ada</span></button>
+              <button class="preset" data-effect="vignette" aria-pressed="false" role="listitem"><i class="fas fa-circle-notch" aria-hidden="true"></i><span>Vignette</span></button>
+              <button class="preset" data-effect="blur" aria-pressed="false" role="listitem"><i class="fas fa-circle" aria-hidden="true"></i><span>Blur</span></button>
+              <button class="preset" data-effect="sharpen" aria-pressed="false" role="listitem"><i class="fas fa-search-plus" aria-hidden="true"></i><span>Tajam</span></button>
+              <button class="preset" data-effect="noise" aria-pressed="false" role="listitem"><i class="fas fa-random" aria-hidden="true"></i><span>Noise</span></button>
+              <button class="preset" data-effect="pixelate" aria-pressed="false" role="listitem"><i class="fas fa-th-large" aria-hidden="true"></i><span>Pixelate</span></button>
+              <button class="preset" data-effect="sepia" aria-pressed="false" role="listitem"><i class="fas fa-adjust" aria-hidden="true"></i><span>Sepia</span></button>
+              <button class="preset" data-effect="invert" aria-pressed="false" role="listitem"><i class="fas fa-exchange-alt" aria-hidden="true"></i><span>Invert</span></button>
+              <button class="preset" data-effect="grayscale" aria-pressed="false" role="listitem"><i class="fas fa-grip-lines" aria-hidden="true"></i><span>Grayscale</span></button>
+            </div>
+            <div class="adjustments" style="margin-top:12px">
+              <label>Blur <span id="blur-value">6px</span></label>
+              <input id="blur-radius" type="range" min="0" max="60" value="6">
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="app-footer"></footer>
+      <div class="notification" id="notification" role="status" aria-live="polite"><i class="fas fa-check-circle"></i><span id="notification-text">Perubahan berhasil diterapkan</span></div>
+    </div>
+  </body>
+</html>
