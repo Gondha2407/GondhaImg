@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileFormat = document.getElementById('file-format');
     const previewContainer = document.getElementById('preview-container');
     const notification = document.getElementById('notification');
-    const recentList = document.getElementById('recent-list');
     const brightnessEl = document.getElementById('brightness');
     const contrastEl = document.getElementById('contrast');
     const blurEl = document.getElementById('blur-radius');
@@ -229,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         tmp.src = ev.target.result;
                     } else {
-                        addToRecentImages(ev.target.result, f.name || 'image');
                     }
                 } catch (e) {  }
             };
@@ -244,10 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showNotification(`${files.length} gambar ditambahkan di sebelah kanan Pratinjau`);
                     return;
                 }
-                if (recentList && recentList.children && recentList.children.length) {
-                    try { recentList.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { recentList.scrollIntoView(); }
-                    showNotification(`${files.length} gambar ditambahkan ke Terakhir`);
-                }
+                showNotification(`${files.length} gambar ditambahkan`);
             }, 300);
         }
         try {
@@ -452,7 +447,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {  }
             setLoading(false);
             showNotification('Perubahan diterapkan');
-            addToRecentImages(lastCanvasDataURL, 'edited');
                 try {
                     if (currentEffect === 'vintage') {
                         drawNoise(ctx, w, h, 0.06);
@@ -566,6 +560,35 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click(); setTimeout(() => { try { URL.revokeObjectURL(url); a.remove(); } catch (e) {} }, 5000);
     }
 
+    async function downloadListIndividually(list, chosenFmt, chosenQ) {
+        if (!Array.isArray(list) || !list.length) return;
+        for (let i = 0; i < list.length; i++) {
+            const it = list[i];
+            try {
+                let w = (i === 0) ? (lastAppliedWidth || parseInt(widthInput.value) || null) : null;
+                let h = (i === 0) ? (lastAppliedHeight || parseInt(heightInput.value) || null) : null;
+                if (!w || !h) {
+                    const meta = sideThumbsData[i - 1];
+                    if (meta) { w = meta.width || meta.originalWidth || meta.naturalWidth || null; h = meta.height || meta.originalHeight || meta.naturalHeight || null; }
+                }
+                const dataUrl = await resizeDataURL(it.src, w || undefined, h || undefined, chosenFmt, chosenQ);
+                if (dataUrl && dataUrl.indexOf('data:') === 0) {
+                    const blob = dataURLToBlob(dataUrl);
+                    const ext = chosenFmt === 'image/png' ? 'png' : chosenFmt === 'image/webp' ? 'webp' : 'jpg';
+                    const name = (it.name || `image-${i+1}`).replace(/\.[^/.]+$/, '') + `.${ext}`;
+                    downloadBlob(blob, name);
+                    continue;
+                }
+            } catch (err) {
+                console.warn('re-encode failed, falling back to original blob', err);
+            }
+            try {
+                const blob2 = await fetchSrcAsBlob(it.src);
+                if (blob2) downloadBlob(blob2, it.name || `image-${i+1}.png`);
+            } catch (err2) { console.error('download individual fallback error', err2); }
+        }
+    }
+
     function showDownloadModal() {
         const list = [];
         const previewSrc = lastCanvasDataURL || (imagePreview ? imagePreview.src : null);
@@ -606,45 +629,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const chosenFmt = (formatSelect && formatSelect.value) ? formatSelect.value : 'image/jpeg';
                     const chosenQ = qualitySlider ? (qualitySlider.value / 100) : 0.9;
-                    for (let i = 0; i < list.length; i++) {
-                        const it = list[i];
-                        try {
-                            let w = (i === 0) ? (lastAppliedWidth || parseInt(widthInput.value) || null) : null;
-                            let h = (i === 0) ? (lastAppliedHeight || parseInt(heightInput.value) || null) : null;
-                            if (!w || !h) {
-                                const meta = sideThumbsData[i - 1];
-                                if (meta) { w = meta.width || meta.originalWidth || meta.naturalWidth || null; h = meta.height || meta.originalHeight || meta.naturalHeight || null; }
-                            }
-                            const dataUrl = await resizeDataURL(it.src, w || undefined, h || undefined, chosenFmt, chosenQ);
-                            if (dataUrl && dataUrl.indexOf('data:') === 0) {
-                                const blob = dataURLToBlob(dataUrl);
-                                const ext = chosenFmt === 'image/png' ? 'png' : chosenFmt === 'image/webp' ? 'webp' : 'jpg';
-                                const name = (it.name || `image-${i+1}`).replace(/\.[^/.]+$/, '') + `.${ext}`;
-                                downloadBlob(blob, name);
-                                continue;
-                            }
-                        } catch (err) {
-                            console.warn('re-encode failed, falling back to original blob', err);
-                        }
-                        try {
-                            const blob2 = await fetchSrcAsBlob(it.src);
-                            if (blob2) downloadBlob(blob2, it.name || `image-${i+1}.png`);
-                        } catch (err2) { console.error('download individual fallback error', err2); }
-                    }
+                    await downloadListIndividually(list, chosenFmt, chosenQ);
                 } catch (err) { console.error('download individual error', err); }
             });
 
             backdrop.querySelector('#download-zip').addEventListener('click', async () => {
                 backdrop.classList.remove('show');
                 try {
-                    if (typeof JSZip === 'undefined') {
-                        showNotification('JSZip tidak tersedia — unduh satu-per-satu sebagai gantinya', 'error');
-                        return;
-                    }
-                    const zip = new JSZip();
-                    const folder = zip.folder('images') || zip;
                     const chosenFmt = (formatSelect && formatSelect.value) ? formatSelect.value : 'image/jpeg';
                     const chosenQ = qualitySlider ? (qualitySlider.value / 100) : 0.9;
+
+                    if (typeof JSZip === 'undefined') {
+                        try {
+                            await new Promise((resolve, reject) => {
+                                const src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                                if (document.querySelector(`script[src="${src}"]`)) {
+                                    const existing = document.querySelector(`script[src="${src}"]`);
+                                    existing.addEventListener('load', () => resolve());
+                                    existing.addEventListener('error', () => reject(new Error('Failed to load JSZip')));
+                                    return;
+                                }
+                                const s = document.createElement('script'); s.src = src; s.async = true;
+                                s.onload = () => resolve();
+                                s.onerror = () => reject(new Error('Failed to load JSZip'));
+                                document.head.appendChild(s);
+                            });
+                        } catch (e) {
+                            console.error('Failed to load JSZip dynamically', e);
+                            showNotification('Gagal memuat JSZip — mulai mengunduh satu-per-satu', 'error');
+                            try { await downloadListIndividually(list, chosenFmt, chosenQ); } catch (ee) { console.error('fallback individual download error', ee); }
+                            return;
+                        }
+                    }
+
+                    if (typeof JSZip === 'undefined') {
+                        showNotification('JSZip tidak tersedia — mulai mengunduh satu-per-satu', 'error');
+                        try { await downloadListIndividually(list, chosenFmt, chosenQ); } catch (e) { console.error('fallback individual download error', e); }
+                        return;
+                    }
+
+                    const zip = new JSZip();
+                    const folder = zip.folder('images') || zip;
                     for (let i = 0; i < list.length; i++) {
                         const it = list[i];
                         try {
@@ -670,10 +695,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (b) folder.file(it.name || `image-${i+1}.png`, b);
                         } catch (err2) { console.error('zip fallback fetch error', err2); }
                     }
-                    const zblob = await zip.generateAsync({ type: 'blob' });
-                    downloadBlob(zblob, 'images.zip');
+
+                    try {
+                        const zblob = await zip.generateAsync({ type: 'blob' });
+                        downloadBlob(zblob, 'images.zip');
+                    } catch (zipErr) {
+                        console.error('zip generateAsync error', zipErr);
+                        showNotification('Gagal membuat ZIP — mulai mengunduh satu-per-satu', 'error');
+                        try { await downloadListIndividually(list, chosenFmt, chosenQ); } catch (ee) { console.error('fallback individual download after zip failure error', ee); }
+                    }
                 } catch (err) {
-                    console.error('zip error', err); showNotification('Gagal membuat ZIP — coba unduh satu-per-satu', 'error');
+                    console.error('zip error', err);
+                    showNotification('Gagal membuat ZIP — coba unduh satu-per-satu', 'error');
+                    try { await downloadListIndividually(list, (formatSelect && formatSelect.value) ? formatSelect.value : 'image/jpeg', qualitySlider ? (qualitySlider.value / 100) : 0.9); } catch (e) { console.error('final fallback error', e); }
                 }
             });
         }
@@ -730,7 +764,6 @@ document.addEventListener('DOMContentLoaded', () => {
         backdrop.classList.add('show');
     }
 
-    // --- Export preview generation ---
     function paperSizeToMM(size) {
         const map = { a4: {w:210,h:297}, a3:{w:297,h:420}, a5:{w:148,h:210}, letter:{w:216,h:279}, legal:{w:216,h:356} };
         return map[size] || { w:210, h:297 };
@@ -748,7 +781,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let wmm = dims.w, hmm = dims.h;
             if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
 
-            // build list of images to include: main preview first, then any side thumbnails
             const images = [];
             try {
                 const main = (imagePreview && imagePreview.src) ? imagePreview.src : (initialState && initialState.src) ? initialState.src : null;
@@ -762,29 +794,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {}
 
-            // Fallback: if no images, show a placeholder page
             if (!images.length) {
                 const emptyHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#e9edf2;margin:0;padding:20px;font-family:Arial,Helvetica,sans-serif} .page{width:${wmm}mm;height:${hmm}mm;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(2,6,23,0.25);position:relative;} .content{box-sizing:border-box;padding:${margin}mm;display:flex;align-items:center;justify-content:center;height:100%;color:#888}</style></head><body><div class="page"><div class="content">Tidak ada gambar untuk pratinjau</div></div></body></html>`;
                 return emptyHtml;
             }
 
-            // compute content area in mm then convert to pixels using DPI
             const contentWmm = Math.max(1, wmm - (margin * 2));
             const contentHmm = Math.max(1, hmm - (margin * 2));
             const targetPxW = Math.max(1, Math.round((contentWmm * dpi) / 25.4));
             const targetPxH = Math.max(1, Math.round((contentHmm * dpi) / 25.4));
 
-            // choose image output format and quality for resized images
             const outFormat = 'image/jpeg';
             const q = (qualitySlider ? (qualitySlider.value / 100) : 0.9);
 
-            // resize images to fit the printable area (preserve aspect by fitting within targetPxW/targetPxH)
             const resizedImages = [];
             for (let i = 0; i < images.length; i++) {
                 const it = images[i];
                 try {
-                    // Aggressive prefetch: try to fetch the image as a Blob and convert to data URL
-                    // This ensures the image will be embedded (no remote URL) and avoids html2canvas CORS/taint issues.
+
                     let baseSrc = it.src;
                     try {
                         const fetchedBlob = await fetchSrcAsBlob(it.src);
@@ -793,12 +820,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             baseSrc = embedded;
                         }
                     } catch (prefetchErr) {
-                        // ignore prefetch error and fallback to original src
                         console.warn('prefetch embed failed for', it.src, prefetchErr);
                     }
 
                     const img = new Image();
-                    // load chosen source (embedded data: or original URL) to determine natural size
                     const loadSrc = baseSrc;
                     const meta = await new Promise((resolve) => {
                         img.onload = () => resolve({ w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 });
@@ -808,7 +833,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     let finalDataUrl = baseSrc;
                     if (meta) {
-                        // compute fit dimensions while preserving aspect
                         const srcW = meta.w || targetPxW;
                         const srcH = meta.h || targetPxH;
                         const scale = Math.min(targetPxW / srcW, targetPxH / srcH, 1);
@@ -819,20 +843,18 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (r && typeof r === 'string' && r.indexOf('data:') === 0) {
                                 finalDataUrl = r;
                             } else {
-                                // if resize didn't return a data: URL, ensure we at least embed via fetch
                                 try {
                                     const b = await fetchSrcAsBlob(baseSrc);
                                     const dr = await blobToDataURL(b);
                                     if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr;
-                                } catch (ee) { /* ignore */ }
+                                } catch (ee) {  }
                             }
                         } catch (e) {
-                            // fallback to trying to embed source directly
                             try {
                                 const b = await fetchSrcAsBlob(baseSrc);
                                 const dr = await blobToDataURL(b);
                                 if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr;
-                            } catch (ee) { /* fallback to original src */ }
+                            } catch (ee) {  }
                         }
                     }
                     resizedImages.push({ src: finalDataUrl, label: it.label });
@@ -842,7 +864,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Generate HTML with one .page per resized image
             let pagesHtml = '';
             for (let pi = 0; pi < resizedImages.length; pi++) {
                 const img = resizedImages[pi];
@@ -870,13 +891,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!iframe) return;
             const fmt = forceFormat || (formatSelect && formatSelect.value) || 'application/pdf';
             if (label) label.textContent = (fmt.indexOf('word')!==-1 ? 'Word' : 'PDF');
-            // buildExportHTML is async now and resizes images to DPI/margin
             const html = await buildExportHTML(fmt);
-            // use srcdoc when available
             try { iframe.srcdoc = html; } catch (e) { iframe.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(html); }
-            // Position the export preview according to the first image orientation
             try {
-                // extract first image src from the generated HTML when possible
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const firstImg = doc.querySelector('.page img');
@@ -895,25 +912,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!canvasArea || !editorRoot) return;
 
             function moveToCanvasSide() {
-                // keep exportSection outside of .canvas-area: insert it into the
-                // editor grid just before the right sidebar so it visually sits
-                // to the right of the canvas area while remaining a sibling.
                 exportSection.classList.remove('full-row');
                 exportSection.classList.add('export-side-by-side');
                 const rightSidebar = document.querySelector('.sidebar.right');
                 if (rightSidebar && rightSidebar.parentNode === editorRoot) {
                     if (rightSidebar.previousSibling !== exportSection) editorRoot.insertBefore(exportSection, rightSidebar);
                 } else {
-                    // fallback: insert after canvasArea
                     try { editorRoot.insertBefore(exportSection, canvasArea.nextSibling); } catch (e) { /* ignore */ }
                 }
             }
 
             function moveToFullRow() {
-                // restore full-row layout and remove side-by-side class
                 exportSection.classList.add('full-row');
                 exportSection.classList.remove('export-side-by-side');
-                // ensure exportSection is directly under .editor after canvas-area
                 const after = canvasArea.nextSibling;
                 if (after !== exportSection) {
                     try { editorRoot.insertBefore(exportSection, canvasArea.nextSibling); } catch (e) { /* ignore */ }
@@ -921,7 +932,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!imgSrc) {
-                // no image info — default to full row
                 moveToFullRow();
                 return;
             }
@@ -937,7 +947,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error('positionExportPreviewForFirstImage error', e); }
     }
 
-    // wire preview buttons and inputs
     try {
         const previewPdfBtn = document.getElementById('preview-pdf');
         const previewWordBtn = document.getElementById('preview-word');
@@ -976,7 +985,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // load html2pdf bundle dynamically if not already loaded
     function ensureHtml2PdfLoaded() {
         return new Promise((resolve, reject) => {
             if (typeof html2pdf !== 'undefined') return resolve();
@@ -1002,20 +1010,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
             const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
 
-            // buildExportHTML is async and will resize images according to DPI/margin
             const html = await buildExportHTML(fmt);
 
             if (fmt.indexOf('pdf') !== -1) {
-                // generate PDF with html2pdf
                 await ensureHtml2PdfLoaded();
-                // create a hidden container with the built HTML
                 const wrap = document.createElement('div');
                 wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0';
                 wrap.style.width = '1000px';
                 wrap.innerHTML = html;
                 document.body.appendChild(wrap);
 
-                // compute page size in mm for jsPDF format
                 const dims = paperSizeToMM(paper);
                 let wmm = dims.w, hmm = dims.h;
                 if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
@@ -1029,7 +1033,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     jsPDF: { unit: 'mm', format: [wmm, hmm], orientation: orientation }
                 };
 
-                // wait for images inside wrap to load before generating PDF (longer timeout)
                 showNotification('Mempersiapkan ekspor PDF — menunggu gambar termuat...', 'success');
                 await new Promise((res) => {
                     const imgs = Array.from(wrap.querySelectorAll('img'));
@@ -1041,24 +1044,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         im.addEventListener('load', checkDone);
                         im.addEventListener('error', checkDone);
                     });
-                    // extended safety timeout in case some images neither load nor error
                     setTimeout(() => { try { console.warn('image wait timeout reached'); res(); } catch (e) { res(); } }, 10000);
                 });
 
-                // html2pdf will create and save the PDF
                 await new Promise((resolve, reject) => {
                     try {
                         html2pdf().set(opt).from(wrap).save().then(() => { resolve(); }).catch((e) => { reject(e); });
                     } catch (e) { reject(e); }
                 });
 
-                // cleanup
                 try { wrap.remove(); } catch (e) {}
                 return;
             }
 
             if (fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1) {
-                // for Word, create a .doc file with HTML content (widely supported)
                 const blob = new Blob([html], { type: 'application/msword' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = `export.doc`;
@@ -1384,50 +1383,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         try { wireApplyModalControls(); } catch (e) {}
     }
 
-    
-
-
-
-    function addToRecentImages(src, name) {
-        if (!recentList) return;
-        const item = document.createElement('div'); item.className = 'thumb';
-        const img = document.createElement('img'); img.src = src; img.alt = name || 'thumb';
-        item.appendChild(img);
-            item.addEventListener('click', () => {
-                originalImage = new Image(); originalImage.onload = function () {
-                    originalWidth = this.width; originalHeight = this.height; aspectRatio = originalWidth / originalHeight;
-                    if (originalDimensions) originalDimensions.textContent = `${originalWidth} × ${originalHeight}`;
-                    if (widthInput) widthInput.value = originalWidth; if (heightInput) heightInput.value = originalHeight;
-                    if (imagePreview) imagePreview.src = src;
-                    if (placeholder) placeholder.style.display = 'none';
-                    initialState = {
-                        src: src,
-                        width: originalWidth,
-                        height: originalHeight,
-                        brightness: brightnessEl ? parseInt(brightnessEl.value) : 100,
-                        contrast: contrastEl ? parseInt(contrastEl.value) : 100,
-                        blur: blurEl ? parseInt(blurEl.value) : 6,
-                        quality: qualitySlider ? parseInt(qualitySlider.value) : 80,
-                        effect: 'normal',
-                        name: name || 'image',
-                        size: null,
-                        type: null
-                    };
-                    showNotification('Gambar dimuat dari terbaru');
-                };
-                originalImage.src = src;
-            });
-        recentList.prepend(item);
-        while (recentList.children.length > 6) recentList.removeChild(recentList.lastChild);
-    }
 
     function addToSideThumbnails(item) {
         const side = document.getElementById('side-thumbs');
         if (!side) {
-            try { addToRecentImages(item.src, item.name); } catch (e) {}
             return;
         }
-        // ensure the right sidebar is visible when adding thumbnails
         try {
             const rightAside = document.querySelector('.sidebar.right');
             if (rightAside) rightAside.style.display = '';
@@ -1455,10 +1416,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const totalPages = Math.max(1, Math.ceil(sideThumbsData.length / pageSize));
 
-    // Determine if controls should be suppressed for this container (convert page may set data-no-controls)
     const disableControls = side && side.dataset && side.dataset.noControls === 'true';
 
-    // If horizontal variant is used, render a horizontal scroller and provide left/right scroll controls
     if (isHorizontal) {
         if (!disableControls) {
             const controls = document.createElement('div');
@@ -1493,9 +1452,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-    // determine items to render; horizontal variant shows all items in a single scroll row
     const currentPage = (typeof page === 'number' && page >= 0) ? page : (typeof sideThumbsPage === 'number' ? sideThumbsPage : 0);
-    // keep the module-level page state in sync
     sideThumbsPage = currentPage;
     const start = currentPage * pageSize;
     const itemsToRender = isHorizontal ? sideThumbsData.slice(0) : sideThumbsData.slice(start, start + pageSize);
@@ -1505,7 +1462,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const img = document.createElement('img'); img.src = itemData.src; img.alt = itemData.name || 'thumb';
             item.appendChild(img);
 
-            // delete button (top-right corner)
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'thumb-delete';
@@ -1639,27 +1595,21 @@ document.addEventListener('DOMContentLoaded', () => {
         function deleteSideThumb(index) {
             try {
                 if (!Number.isInteger(index) || index < 0 || index >= sideThumbsData.length) return;
-                // If deleting the currently previewed sidebar index, clear preview selection
                 if (typeof currentPreviewSideIndex === 'number' && currentPreviewSideIndex === index) {
                     currentPreviewSideIndex = null;
-                    // reset preview to initial state if available
                     if (initialState && initialState.src && imagePreview) {
                         imagePreview.src = initialState.src; originalWidth = initialState.width || originalWidth; originalHeight = initialState.height || originalHeight;
                         if (newDimensions) newDimensions.textContent = `${initialState.width || '-'} × ${initialState.height || '-'}`;
                     }
                 }
-                // Remove the item
                 sideThumbsData.splice(index, 1);
-                // If no thumbnails remain, hide the right sidebar to keep UI clean
                 if (!sideThumbsData.length) {
                     try {
                         const rightAside = document.querySelector('.sidebar.right');
                         if (rightAside) rightAside.style.display = 'none';
                     } catch (e) {}
                 }
-                // Adjust currentPreviewSideIndex if it was after the deleted index
                 if (typeof currentPreviewSideIndex === 'number' && currentPreviewSideIndex > index) currentPreviewSideIndex -= 1;
-                // Recompute page if needed
                 const side = document.getElementById('side-thumbs');
                 const isGrid3x2 = side && side.classList && side.classList.contains && side.classList.contains('grid-3x2');
                 const pageSize = (function() { try { const v = parseInt(side && side.dataset && side.dataset.maxThumbs, 10); return (isNaN(v) || v <= 0) ? (isGrid3x2 ? 6 : SIDE_THUMBS_PAGE_SIZE) : v; } catch (e) { return (isGrid3x2 ? 6 : SIDE_THUMBS_PAGE_SIZE); } })();
@@ -1768,7 +1718,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     })();
 
-    // Ukuran Gambar handling removed per user request
 
     (function wireGenericCollapsibles(){
         const toggles = document.querySelectorAll('.collapsible-toggle');
@@ -1848,8 +1797,23 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-    if (applyBtn) applyBtn.addEventListener('click', showApplyModal);
-        // handle download click for both legacy `#download-btn` and new `#download-export-btn`
+        {
+            const fileInput = document.getElementById('file-input');
+            const allowMultiple = fileInput && fileInput.hasAttribute && fileInput.hasAttribute('multiple');
+            const hasSideThumbs = document.getElementById('side-thumbs');
+            if (applyBtn) {
+                if (allowMultiple || hasSideThumbs) {
+                    applyBtn.addEventListener('click', showApplyModal);
+                } else {
+                    applyBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (!originalImage) { showNotification('Muat gambar terlebih dahulu', 'error'); return; }
+                        dbg('apply button (direct) clicked');
+                        applyChanges(false);
+                    });
+                }
+            }
+        }
         async function handleDownloadClick(e) {
             try {
                 if (e && e.preventDefault) e.preventDefault();
@@ -1861,7 +1825,28 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) { console.error('handleDownloadClick error', err); showDownloadModal(); }
         }
 
-        if (downloadBtn) downloadBtn.addEventListener('click', handleDownloadClick);
+        const _fileInput_for_download = document.getElementById('file-input');
+        const _allowMultiple_for_download = _fileInput_for_download && _fileInput_for_download.hasAttribute && _fileInput_for_download.hasAttribute('multiple');
+        const _hasSideThumbs_for_download = document.getElementById('side-thumbs');
+        if (downloadBtn) {
+            if (_allowMultiple_for_download || _hasSideThumbs_for_download) {
+                downloadBtn.addEventListener('click', handleDownloadClick);
+            } else {
+                downloadBtn.addEventListener('click', async (e) => {
+                    try {
+                        if (e && e.preventDefault) e.preventDefault();
+                        const exportIframe = document.getElementById('export-preview-iframe');
+                        if (exportIframe) {
+                            try { await downloadExportPreview(); return; } catch (err) { console.error('downloadExportPreview error', err); }
+                        }
+                        downloadImage();
+                    } catch (err) {
+                        console.error('direct download failed', err);
+                        try { handleDownloadClick(); } catch (e) {}
+                    }
+                });
+            }
+        }
         if (downloadExportBtn) downloadExportBtn.addEventListener('click', handleDownloadClick);
         if (resetBtn) {
             try { resetBtn.type = resetBtn.type || 'button'; } catch (e) {}
@@ -1878,26 +1863,32 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const canvasActions = document.querySelector('.canvas-actions');
             if (canvasActions) {
-                    if (!document.getElementById('apply-direct-btn')) {
-                        const applyDirectBtn = document.createElement('button');
-                        applyDirectBtn.className = 'btn small';
-                        applyDirectBtn.id = 'apply-direct-btn';
-                        applyDirectBtn.innerHTML = '<i class="fas fa-bolt"></i> Terapkan Langsung';
-                        if (applyBtn && applyBtn.parentNode === canvasActions) canvasActions.insertBefore(applyDirectBtn, applyBtn.nextSibling);
-                        else canvasActions.appendChild(applyDirectBtn);
+                    const fileInput = document.getElementById('file-input');
+                    const allowMultiple = fileInput && fileInput.hasAttribute && fileInput.hasAttribute('multiple');
+                    const hasSideThumbs = document.getElementById('side-thumbs');
+                    
+                    if (allowMultiple || hasSideThumbs) {
+                        if (!document.getElementById('apply-direct-btn')) {
+                            const applyDirectBtn = document.createElement('button');
+                            applyDirectBtn.className = 'btn small';
+                            applyDirectBtn.id = 'apply-direct-btn';
+                            applyDirectBtn.innerHTML = '<i class="fas fa-bolt"></i> Terapkan Langsung';
+                            if (applyBtn && applyBtn.parentNode === canvasActions) canvasActions.insertBefore(applyDirectBtn, applyBtn.nextSibling);
+                            else canvasActions.appendChild(applyDirectBtn);
+                        }
+                        (function wireApplyDirect(){
+                            const btn = document.getElementById('apply-direct-btn');
+                            if (!btn) return;
+                            if (btn._wired) return;
+                            btn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                if (!originalImage) { showNotification('Muat gambar terlebih dahulu', 'error'); return; }
+                                dbg('apply-direct button clicked');
+                                applyChanges(false);
+                            });
+                            btn._wired = true;
+                        })();
                     }
-                    (function wireApplyDirect(){
-                        const btn = document.getElementById('apply-direct-btn');
-                        if (!btn) return;
-                        if (btn._wired) return;
-                        btn.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            if (!originalImage) { showNotification('Muat gambar terlebih dahulu', 'error'); return; }
-                            dbg('apply-direct button clicked');
-                            applyChanges(false);
-                        });
-                        btn._wired = true;
-                    })();
 
             }
         } catch (err) {  }
