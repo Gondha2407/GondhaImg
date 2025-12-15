@@ -606,17 +606,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="modal-body" style="display:flex;gap:12px;">
                     <div style="flex:1;min-width:320px;">
                         <p class="small">Pilih gambar untuk diunduh (Pratinjau berada di paling atas)</p>
-                        <div id="download-list" style="display:grid;grid-template-columns:1fr;gap:8px;max-height:360px;overflow:auto;padding:6px;border-radius:6px"></div>
+                        <div id="download-list" style="display:grid;grid-template-columns:1fr;gap:8px;max-height:360px;overflow:auto;padding:6px;border-radius:6px;-ms-overflow-style:none;scrollbar-width:none;"></div>
                         <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
                             <button class="ghost" id="download-cancel">Batal</button>
                             <button class="ghost" id="download-individual">Unduh Terpilih (Satu-per-satu)</button>
                             <button class="apply-btn" id="download-zip">Unduh Terpilih (ZIP)</button>
                         </div>
-                    </div>
-                    <div style="width:200px;border-left:1px solid #f2f2f2;padding-left:12px;">
-                        <p class="small">Ringkasan</p>
-                        <div id="download-summary">0 gambar</div>
-                        <div style="margin-top:8px;font-size:0.9rem;color:#444">Format file mengikuti sumber (JPEG/PNG/WEBP). Untuk ZIP, semua file akan dikemas.</div>
                     </div>
                 </div>
             `;
@@ -759,7 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
             wrap.appendChild(dlBtn);
             listEl.appendChild(wrap);
         });
-        summaryEl.textContent = `${items.length} gambar tersedia`;
+        if (summaryEl) summaryEl.textContent = `${items.length} gambar tersedia`;
 
         backdrop.classList.add('show');
     }
@@ -811,7 +806,6 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < images.length; i++) {
                 const it = images[i];
                 try {
-
                     let baseSrc = it.src;
                     try {
                         const fetchedBlob = await fetchSrcAsBlob(it.src);
@@ -857,6 +851,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             } catch (ee) {  }
                         }
                     }
+                    try {
+                        if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
+                            try {
+                                const lastBlob = await fetchSrcAsBlob(baseSrc);
+                                const lastData = await blobToDataURL(lastBlob);
+                                if (lastData && typeof lastData === 'string' && lastData.indexOf('data:') === 0) finalDataUrl = lastData;
+                            } catch (ee) {  }
+                        }
+                    } catch (e) {  }
+
+                    if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
+                        const missingSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect fill="%23f2f2f2" width="100%" height="100%"/>' +
+                            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial,Helvetica,sans-serif" font-size="20">Gambar tidak tersedia</text></svg>';
+                        finalDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(missingSvg);
+                    }
+
                     resizedImages.push({ src: finalDataUrl, label: it.label });
                 } catch (e) {
                     console.warn('resizing/embedding failed for', it && it.src, e);
@@ -873,13 +883,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 pagesHtml += `</div>`;
             }
 
-            const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-                body{background:#e9edf2;margin:0;padding:20px;font-family:Arial,Helvetica,sans-serif}
-                .page{width:${wmm}mm;height:${hmm}mm;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(2,6,23,0.25);position:relative;margin-bottom:18px}
-                .content{box-sizing:border-box;padding:${margin}mm;display:flex;align-items:center;justify-content:center;height:100%;}
-                .content img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-                .meta{position:absolute;left:8px;bottom:6px;color:#666;font-size:11px}
-            </style></head><body>${pagesHtml}</body></html>`;
+            const isWord = (fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1);
+            let pageRule = '';
+            let bodyContent = pagesHtml;
+            if (isWord) {
+                pageRule = `@page Section1 { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; } div.Section1{page:Section1}`;
+                bodyContent = `<div class="Section1">${pagesHtml}</div>`;
+            } else {
+                pageRule = `@page { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; } @page { size: ${paper} ${orientation}; }`;
+            }
+
+            const headMeta = isWord ?
+                '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="ProgId" content="Word.Document" />' :
+                '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+
+            const htmlOpen = isWord ? '<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' : '<!doctype html><html>';
+
+            const wordXml = isWord ? '<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>' : '';
+
+            const html = htmlOpen + `<head>` + headMeta + `<style>`
+                + pageRule + `\n` +
+                `body{background:#e9edf2;margin:0;padding:20px;font-family:Arial,Helvetica,sans-serif}\n` +
+                `.page{width:${wmm}mm;height:${hmm}mm;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(2,6,23,0.25);position:relative;margin-bottom:18px;page-break-after:always}\n` +
+                `.content{box-sizing:border-box;padding:${margin}mm;display:flex;align-items:center;justify-content:center;height:100%;}\n` +
+                `.content img{max-width:100%;max-height:100%;object-fit:contain;display:block}\n` +
+                `.meta{position:absolute;left:8px;bottom:6px;color:#666;font-size:11px}\n` +
+            `</style></head><body>` + wordXml + bodyContent + `</body></html>`;
             return html;
         } catch (e) { return '<html><body><div>Preview gagal dibuat</div></body></html>'; }
     }
@@ -960,7 +989,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (imagePreview) imagePreview.addEventListener('load', () => updateExportPreview());
     } catch (e) {}
 
-
     function resizeDataURL(src, w, h, fmt, q) {
         return new Promise((resolve, reject) => {
             if (!src) return resolve(src);
@@ -1002,81 +1030,281 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function downloadExportPreview() {
+    async function buildExportResources(formatOverride) {
         try {
-            const fmt = (formatSelect && formatSelect.value) ? formatSelect.value : 'application/pdf';
+            const fmt = formatOverride || (formatSelect && formatSelect.value) || 'application/pdf';
             const paper = (document.getElementById('paper-size') || {}).value || 'a4';
             const orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
             const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
             const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
 
-            const html = await buildExportHTML(fmt);
+            const dims = paperSizeToMM(paper);
+            let wmm = dims.w, hmm = dims.h;
+            if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
 
-            if (fmt.indexOf('pdf') !== -1) {
-                await ensureHtml2PdfLoaded();
-                const wrap = document.createElement('div');
-                wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0';
-                wrap.style.width = '1000px';
-                wrap.innerHTML = html;
-                document.body.appendChild(wrap);
+            const contentWmm = Math.max(1, wmm - (margin * 2));
+            const contentHmm = Math.max(1, hmm - (margin * 2));
+            const targetPxW = Math.max(1, Math.round((contentWmm * dpi) / 25.4));
+            const targetPxH = Math.max(1, Math.round((contentHmm * dpi) / 25.4));
 
-                const dims = paperSizeToMM(paper);
-                let wmm = dims.w, hmm = dims.h;
-                if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
+            const outFormat = 'image/jpeg';
+            const q = (qualitySlider ? (qualitySlider.value / 100) : 0.9);
 
-                const filename = `export.${fmt.indexOf('word') !== -1 ? 'doc' : 'pdf'}`;
-                const opt = {
-                    margin: margin,
-                    filename: filename,
-                    image: { type: 'jpeg', quality: (qualitySlider ? (qualitySlider.value / 100) : 0.9) },
-                    html2canvas: { scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, allowTaint: true },
-                    jsPDF: { unit: 'mm', format: [wmm, hmm], orientation: orientation }
-                };
+            const images = [];
+            try { const main = (imagePreview && imagePreview.src) ? imagePreview.src : (initialState && initialState.src) ? initialState.src : null; if (main) images.push({ src: main, label: 'Pratinjau' }); } catch (e) {}
+            try { if (Array.isArray(sideThumbsData) && sideThumbsData.length) sideThumbsData.forEach((it,i)=>{ try{ if (it && it.src) images.push({ src: it.src, label: it.name || `Gambar ${i+1}` }); }catch(e){} }); } catch(e){}
 
-                showNotification('Mempersiapkan ekspor PDF — menunggu gambar termuat...', 'success');
-                await new Promise((res) => {
-                    const imgs = Array.from(wrap.querySelectorAll('img'));
-                    if (!imgs.length) return res();
-                    let remaining = imgs.length;
-                    function checkDone() { if (--remaining <= 0) res(); }
-                    imgs.forEach((im) => {
-                        if (im.complete && im.naturalWidth) return checkDone();
-                        im.addEventListener('load', checkDone);
-                        im.addEventListener('error', checkDone);
-                    });
-                    setTimeout(() => { try { console.warn('image wait timeout reached'); res(); } catch (e) { res(); } }, 10000);
-                });
-
-                await new Promise((resolve, reject) => {
+            const resizedImages = [];
+            for (let i = 0; i < images.length; i++) {
+                const it = images[i];
+                try {
+                    let baseSrc = it.src;
                     try {
-                        html2pdf().set(opt).from(wrap).save().then(() => { resolve(); }).catch((e) => { reject(e); });
-                    } catch (e) { reject(e); }
-                });
+                        const fetchedBlob = await fetchSrcAsBlob(it.src);
+                        const embedded = await blobToDataURL(fetchedBlob);
+                        if (embedded && typeof embedded === 'string' && embedded.indexOf('data:') === 0) baseSrc = embedded;
+                    } catch (prefetchErr) { console.warn('prefetch embed failed for', it.src, prefetchErr); }
 
-                try { wrap.remove(); } catch (e) {}
-                return;
+                    const img = new Image();
+                    const loadSrc = baseSrc;
+                    const meta = await new Promise((resolve) => {
+                        img.onload = () => resolve({ w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 });
+                        img.onerror = () => resolve(null);
+                        img.src = loadSrc;
+                    });
+
+                    let finalDataUrl = baseSrc;
+                    if (meta) {
+                        const srcW = meta.w || targetPxW;
+                        const srcH = meta.h || targetPxH;
+                        const scale = Math.min(targetPxW / srcW, targetPxH / srcH, 1);
+                        const wpx = Math.max(1, Math.round(srcW * scale));
+                        const hpx = Math.max(1, Math.round(srcH * scale));
+                        try {
+                            const r = await resizeDataURL(baseSrc, wpx, hpx, outFormat, q);
+                            if (r && typeof r === 'string' && r.indexOf('data:') === 0) finalDataUrl = r;
+                            else {
+                                try { const b = await fetchSrcAsBlob(baseSrc); const dr = await blobToDataURL(b); if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr; } catch (ee) {}
+                            }
+                        } catch (e) { try { const b = await fetchSrcAsBlob(baseSrc); const dr = await blobToDataURL(b); if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr; } catch (ee) {} }
+                    }
+
+                    // ensure data: url
+                    if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
+                        const missingSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect fill="%23f2f2f2" width="100%" height="100%"/>' +
+                            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial,Helvetica,sans-serif" font-size="20">Gambar tidak tersedia</text></svg>';
+                        finalDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(missingSvg);
+                    }
+
+                    resizedImages.push({ src: finalDataUrl, label: it.label });
+                } catch (e) { console.warn('resizing/embedding failed for', it && it.src, e); resizedImages.push({ src: it.src, label: it.label }); }
             }
 
-            if (fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1) {
-                const blob = new Blob([html], { type: 'application/msword' });
+            return { resizedImages: resizedImages, wmm: wmm, hmm: hmm, contentWmm: contentWmm, contentHmm: contentHmm, margin: margin, dpi: dpi, orientation: orientation };
+        } catch (e) { throw e; }
+    }
+
+    async function downloadExportViaJsPDF() {
+        try {
+            const res = await buildExportResources();
+            if (!res || !Array.isArray(res.resizedImages) || !res.resizedImages.length) throw new Error('No images');
+
+            const jspdfSrc = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+            if (typeof window.jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+                await new Promise((resolve, reject) => {
+                    const existing = document.querySelector(`script[src="${jspdfSrc}"]`);
+                    if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('Failed to load jsPDF'))); return; }
+                    const s = document.createElement('script'); s.src = jspdfSrc; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load jsPDF')); document.head.appendChild(s);
+                });
+            }
+            const { jsPDF } = window.jspdf || window.jspdf || (window.jspdf = window.jspdf || {});
+            if (!jsPDF && window.jspdf && window.jspdf.jsPDF) {
+            }
+            const PDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : (window.jsPDF || (window.jspdf && window.jspdf.jsPDF));
+            if (!PDFLib) throw new Error('jsPDF not available');
+
+            const pdf = new PDFLib({ unit: 'mm', format: [res.wmm, res.hmm], orientation: res.orientation });
+            for (let i = 0; i < res.resizedImages.length; i++) {
+                const page = res.resizedImages[i];
+                const img = new Image();
+                img.src = page.src;
+                await new Promise((r) => { img.onload = r; img.onerror = r; });
+                const iw = img.naturalWidth || img.width || 1;
+                const ih = img.naturalHeight || img.height || 1;
+                const imgWmm = (iw * 25.4) / (res.dpi || 300);
+                const imgHmm = (ih * 25.4) / (res.dpi || 300);
+                const maxW = res.contentWmm; const maxH = res.contentHmm;
+                let drawW = imgWmm; let drawH = imgHmm;
+                const scale = Math.min(maxW / drawW, maxH / drawH, 1);
+                drawW = Math.round(drawW * scale * 100) / 100; drawH = Math.round(drawH * scale * 100) / 100;
+                const x = res.margin + Math.max(0, (maxW - drawW) / 2);
+                const y = res.margin + Math.max(0, (maxH - drawH) / 2);
+
+                try {
+                    pdf.addImage(page.src, 'JPEG', x, y, drawW, drawH);
+                } catch (e) {
+                    // try PNG
+                    try { pdf.addImage(page.src, 'PNG', x, y, drawW, drawH); } catch (ee) { console.warn('addImage failed', ee); }
+                }
+
+                if (i < res.resizedImages.length - 1) pdf.addPage([res.wmm, res.hmm], res.orientation);
+            }
+
+            const filename = `export.pdf`;
+            pdf.save(filename);
+            return true;
+        } catch (e) { console.warn('downloadExportViaJsPDF failed', e); return false; }
+    }
+
+        async function ensureAllImagesBase64(root) {
+            if (!root) return;
+            try {
+                const imgs = Array.from(root.querySelectorAll('img'));
+                for (let img of imgs) {
+                    try {
+                        const src = img.getAttribute('src');
+                        if (!src) continue;
+                        if (src.indexOf('data:') === 0) continue;
+
+                        const b = await fetchSrcAsBlob(src);
+                        if (b) {
+                            const d = await blobToDataURL(b);
+                            if (d && typeof d === 'string' && d.indexOf('data:') === 0) {
+                                img.setAttribute('src', d);
+                                continue;
+                            }
+                        }
+
+                        await new Promise((res) => {
+                            try {
+                                const tmp = new Image();
+                                tmp.crossOrigin = 'anonymous';
+                                tmp.onload = () => {
+                                    try {
+                                        const c = document.createElement('canvas');
+                                        c.width = tmp.naturalWidth || tmp.width || 1;
+                                        c.height = tmp.naturalHeight || tmp.height || 1;
+                                        const ctx = c.getContext('2d');
+                                        ctx.drawImage(tmp, 0, 0);
+                                        try {
+                                            const dt = c.toDataURL('image/png');
+                                            if (dt && dt.indexOf('data:') === 0) img.setAttribute('src', dt);
+                                        } catch (e) {  }
+                                    } catch (e) {  }
+                                    res();
+                                };
+                                tmp.onerror = () => res();
+                                tmp.src = src;
+                            } catch (e) { res(); }
+                        });
+                    } catch (e) { console.warn('ensureAllImagesBase64 inner error', e); }
+                }
+            } catch (e) { console.warn('ensureAllImagesBase64 failed', e); }
+        }
+
+        async function downloadExportDirect() {
+            try {
+                const fmt = (formatSelect && formatSelect.value) ? formatSelect.value : 'application/pdf';
+                const paper = (document.getElementById('paper-size') || {}).value || 'a4';
+                const orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
+                const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
+                const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
+
+                const html = await buildExportHTML(fmt);
+
+                if (fmt.indexOf('pdf') !== -1) {
+                    await ensureHtml2PdfLoaded();
+                    const wrap = document.createElement('div');
+                    wrap.style.position = 'fixed'; wrap.style.left = '-9999px'; wrap.style.top = '0';
+                    wrap.style.width = '1000px';
+                    wrap.innerHTML = html;
+                    document.body.appendChild(wrap);
+
+                    try {
+                        await ensureAllImagesBase64(wrap);
+                    } catch (e) { console.warn('ensureAllImagesBase64 call failed', e); }
+
+                    try {
+                        const imgs = Array.from(wrap.querySelectorAll('img'));
+                        const foundInvalid = imgs.some(im => {
+                            try {
+                                const s = im.getAttribute('src') || '';
+                                if (!s) return true;
+                                if (s.indexOf('data:') !== 0) return true;
+                                if (s.indexOf('image/svg+xml') !== -1 && s.indexOf('Gambar tidak tersedia') !== -1) return true;
+                                return false;
+                            } catch (ee) { return true; }
+                        });
+                        if (foundInvalid) {
+                            showNotification('Ada gambar belum valid — ekspor dibatalkan', 'error');
+                            try { wrap.remove(); } catch (e) {}
+                            return;
+                        }
+                    } catch (e) { console.warn('validation of wrapped images failed', e); }
+
+                    const dims = paperSizeToMM(paper);
+                    let wmm = dims.w, hmm = dims.h;
+                    if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
+
+                    const filename = `export.${fmt.indexOf('word') !== -1 ? 'doc' : 'pdf'}`;
+                    const opt = {
+                        margin: margin,
+                        filename: filename,
+                        image: { type: 'jpeg', quality: (qualitySlider ? (qualitySlider.value / 100) : 0.9) },
+                        html2canvas: { scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, allowTaint: true },
+                        jsPDF: { unit: 'mm', format: [wmm, hmm], orientation: orientation }
+                    };
+
+                    showNotification('Mempersiapkan ekspor PDF — menunggu gambar termuat...', 'success');
+
+                    try {
+                        const ok = await downloadExportViaJsPDF();
+                        if (ok) { try { wrap.remove(); } catch (e) {} ; return; }
+                    } catch (e) { console.warn('jsPDF path failed, falling back to html2pdf', e); }
+
+                    await new Promise((res) => {
+                        const imgs = Array.from(wrap.querySelectorAll('img'));
+                        if (!imgs.length) return res();
+                        let remaining = imgs.length;
+                        function checkDone() { if (--remaining <= 0) res(); }
+                        imgs.forEach((im) => {
+                            if (im.complete && im.naturalWidth) return checkDone();
+                            im.addEventListener('load', checkDone);
+                            im.addEventListener('error', checkDone);
+                        });
+                        setTimeout(() => { try { console.warn('image wait timeout reached'); res(); } catch (e) { res(); } }, 10000);
+                    });
+
+                    await new Promise((resolve, reject) => {
+                        try {
+                            html2pdf().set(opt).from(wrap).save().then(() => { resolve(); }).catch((e) => { reject(e); });
+                        } catch (e) { reject(e); }
+                    });
+
+                    try { wrap.remove(); } catch (e) {}
+                    return;
+                }
+
+                if (fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1) {
+                    const blob = new Blob([html], { type: 'application/msword' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = `export.doc`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
+                    return;
+                }
+
+                const blob = new Blob([html], { type: 'text/html' });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `export.doc`;
+                const a = document.createElement('a'); a.href = url; a.download = 'export.html';
                 document.body.appendChild(a); a.click(); a.remove();
                 setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
-                return;
+            } catch (e) {
+                console.error('downloadExportDirect failed', e);
+                showNotification('Gagal mengunduh ekspor', 'error');
             }
-
-            // fallback: save HTML
-            const blob = new Blob([html], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'export.html';
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
-        } catch (e) {
-            console.error('downloadExportPreview failed', e);
-            showNotification('Gagal membuat unduhan pratinjau ekspor', 'error');
         }
-    }
+
 
     function estimateDataURLSize(dataUrl) {
         if (!dataUrl) return null;
@@ -1208,61 +1436,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 function renderPage() {
                                     thumbList.innerHTML = '';
-                                    const PER_PAGE = 10;
-                                    const totalPages = Math.max(1, Math.ceil(sideThumbsData.length / PER_PAGE));
-                                    page = Math.max(0, Math.min(page, totalPages - 1));
-                                    const start = page * PER_PAGE;
-                                    const slice = sideThumbsData.slice(start, start + PER_PAGE);
+                                    const items = sideThumbsData.slice(0);
+                                    thumbList.style.display = 'grid';
+                                    thumbList.style.maxHeight = '360px';
+                                    thumbList.style.overflow = 'auto';
+                                    thumbList.style.padding = '6px';
                                     const isMobile = (typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(max-width:720px)').matches));
-                                    if (!isMobile) {
-                                        const nav = document.createElement('div'); nav.className = 'apply-nav'; nav.setAttribute('role','navigation'); nav.style.display = 'flex'; nav.style.justifyContent = 'space-between'; nav.style.alignItems = 'center'; nav.style.marginBottom = '8px';
-                                        const prev = document.createElement('button'); prev.className = 'ghost'; prev.textContent = '◀'; prev.disabled = page <= 0;
-                                        const info = document.createElement('div'); info.style.color = 'var(--muted)'; info.style.fontWeight = '700'; info.textContent = `${page + 1} / ${totalPages}`;
-                                        const next = document.createElement('button'); next.className = 'ghost'; next.textContent = '▶'; next.disabled = page >= totalPages - 1;
-                                        prev.addEventListener('click', () => { page = Math.max(0, page - 1); renderPage(); });
-                                        next.addEventListener('click', () => { page = Math.min(totalPages - 1, page + 1); renderPage(); });
-                                        nav.appendChild(prev); nav.appendChild(info); nav.appendChild(next);
-                                        thumbList.appendChild(nav);
-                                    }
                                     if (isMobile) {
-                                        if (sideThumbsData.length > PER_PAGE) {
-                                            const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
-                                            sideThumbsData.forEach((it, idx) => {
-                                                const globalIndex = idx;
-                                                const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
-                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
-                                                try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                                cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
-                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
-                                                const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
-                                                wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
-                                                vert.appendChild(wrapper);
-                                            });
-                                            thumbList.appendChild(vert);
-                                        } else {
-                                            const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
-                                            slice.forEach((it, idx) => {
-                                                const globalIndex = start + idx;
-                                                const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
-                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
-                                                try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                                cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
-                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
-                                                const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
-                                                wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
-                                                vert.appendChild(wrapper);
-                                            });
-                                            thumbList.appendChild(vert);
-                                        }
-                                    } else {
-                                        slice.forEach((it, idx) => {
-                                            const globalIndex = start + idx;
+                                        const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                        items.forEach((it, idx) => {
+                                            const globalIndex = idx;
                                             const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
                                             const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
                                             try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                            cb.addEventListener('change', (ev) => {
-                                                if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex);
-                                            });
+                                            cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
+                                            const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                            const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                            wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                            vert.appendChild(wrapper);
+                                        });
+                                        thumbList.appendChild(vert);
+                                    } else {
+                                        items.forEach((it, idx) => {
+                                            const globalIndex = idx;
+                                            const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex;
+                                            try { cb.checked = selectedSet.has(globalIndex) || !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                            cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
                                             const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || 'thumb'; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
                                             const span = document.createElement('span'); span.textContent = it.name || `Gambar ${globalIndex + 1}`;
                                             wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(span);
@@ -1285,7 +1485,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
 
                                 renderPage();
-                                thumbList.style.display = 'grid';
                         });
                         } else {
                                 const sizeDisplay = backdrop.querySelector('#apply-size-display') || backdrop.querySelector('.apply-modal .info');
@@ -1300,68 +1499,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 function populateThumbList() {
                                     if (!thumbList) return;
-                                    const PER_PAGE = 10;
-                                    const totalPages = Math.max(1, Math.ceil(sideThumbsData.length / PER_PAGE));
-                                    let page = backdrop._applyThumbPage || 0;
-
-                                    function render() {
-                                        thumbList.innerHTML = '';
-                                        const PER_PAGE = 10;
-                                        const totalPages = Math.max(1, Math.ceil(sideThumbsData.length / PER_PAGE));
-                                        page = Math.max(0, Math.min(page, totalPages - 1));
-                                        const start = page * PER_PAGE;
-                                        const slice = sideThumbsData.slice(start, start + PER_PAGE);
-                                        const isMobile = (typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(max-width:720px)').matches));
-                                        if (!isMobile) {
-                                            const nav = document.createElement('div'); nav.className = 'apply-nav'; nav.setAttribute('role','navigation'); nav.style.display = 'flex'; nav.style.justifyContent = 'space-between'; nav.style.alignItems = 'center'; nav.style.marginBottom = '8px';
-                                            const prev = document.createElement('button'); prev.className = 'ghost'; prev.textContent = '◀'; prev.disabled = page <= 0;
-                                            const info = document.createElement('div'); info.style.color = 'var(--muted)'; info.style.fontWeight = '700'; info.textContent = `${page + 1} / ${totalPages}`;
-                                            const next = document.createElement('button'); next.className = 'ghost'; next.textContent = '▶'; next.disabled = page >= totalPages - 1;
-                                            prev.addEventListener('click', () => { page = Math.max(0, page - 1); backdrop._applyThumbPage = page; render(); });
-                                            next.addEventListener('click', () => { page = Math.min(totalPages - 1, page + 1); backdrop._applyThumbPage = page; render(); });
-                                            nav.appendChild(prev); nav.appendChild(info); nav.appendChild(next);
-                                            thumbList.appendChild(nav);
-                                        }
-                                        if (isMobile) {
-                                            if (sideThumbsData.length > PER_PAGE) {
-                                                const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
-                                                sideThumbsData.forEach((it, idx) => {
-                                                    const globalIndex = idx;
-                                                    const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
-                                                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                                    const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
-                                                    const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
-                                                    wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
-                                                    vert.appendChild(wrapper);
-                                                });
-                                                thumbList.appendChild(vert);
-                                            } else {
-                                                const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
-                                                slice.forEach((it, idx) => {
-                                                    const globalIndex = start + idx;
-                                                    const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
-                                                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
-                                                    const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
-                                                    const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
-                                                    wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
-                                                    vert.appendChild(wrapper);
-                                                });
-                                                thumbList.appendChild(vert);
-                                            }
-                                        } else {
-                                            slice.forEach((it, idx) => {
-                                                const globalIndex = start + idx;
-                                                const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
-                                                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`);
-                                                const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
-                                                const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
-                                                wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
-                                                thumbList.appendChild(wrapper);
-                                            });
-                                        }
+                                    thumbList.innerHTML = '';
+                                    thumbList.style.maxHeight = '360px';
+                                    thumbList.style.overflow = 'auto';
+                                    thumbList.style.padding = '6px';
+                                    const items = sideThumbsData.slice(0);
+                                    const isMobile = (typeof window !== 'undefined' && (window.matchMedia && window.matchMedia('(max-width:720px)').matches));
+                                    if (isMobile) {
+                                        const vert = document.createElement('div'); vert.className = 'apply-thumb-vert';
+                                        items.forEach((it, idx) => {
+                                            const globalIndex = idx;
+                                            const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                            cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
+                                            const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '64px'; img.style.height = '48px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                            const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                            wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                            vert.appendChild(wrapper);
+                                        });
+                                        thumbList.appendChild(vert);
+                                    } else {
+                                        items.forEach((it, idx) => {
+                                            const globalIndex = idx;
+                                            const wrapper = document.createElement('label'); wrapper.className = 'sel-thumb'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.gap = '8px'; wrapper.style.padding = '6px';
+                                            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.idx = globalIndex; try { cb.checked = !!(it.applied && it.appliedTo === `${w}×${h}`); } catch (e) {}
+                                            cb.addEventListener('change', (ev) => { if (ev.target.checked) selectedSet.add(globalIndex); else selectedSet.delete(globalIndex); });
+                                            const img = document.createElement('img'); img.src = it.src || ''; img.alt = it.name || `Gambar ${globalIndex+1}`; img.style.width = '56px'; img.style.height = '40px'; img.style.objectFit = 'cover'; img.style.borderRadius = '6px';
+                                            const meta = document.createElement('div'); meta.style.flex = '1'; meta.innerHTML = `<div style="font-weight:600">${it.name || `Gambar ${globalIndex+1}`}</div><div style="font-size:0.85rem;color:#9aa4b2">${it.width ? it.width + ' × ' + (it.height || '-') : 'Dimensi tidak diketahui'}</div>`;
+                                            wrapper.appendChild(cb); wrapper.appendChild(img); wrapper.appendChild(meta);
+                                            thumbList.appendChild(wrapper);
+                                        });
                                     }
-
-                                    render();
                                 }
 
                                 populateThumbList();
@@ -1847,7 +2015,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        if (downloadExportBtn) downloadExportBtn.addEventListener('click', handleDownloadClick);
+        if (downloadExportBtn) downloadExportBtn.addEventListener('click', async (e) => { try { if (e && e.preventDefault) e.preventDefault(); await downloadExportDirect(); } catch (err) { console.error('downloadExportDirect error', err); try { handleDownloadClick(e); } catch (ee) {} } });
         if (resetBtn) {
             try { resetBtn.type = resetBtn.type || 'button'; } catch (e) {}
             if (!resetBtn._wired) {
