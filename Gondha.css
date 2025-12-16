@@ -12,20 +12,6 @@
   --shadow: 0 8px 30px rgba(2,6,23,0.6);
   font-synthesis: none;
 }
-:root{
-  --bg-1: #0f1724;
-  --bg-2: linear-gradient(135deg,#0f1724,#0b1220);
-  --card: rgba(255,255,255,0.04);
-  --glass: rgba(255,255,255,0.03);
-  --muted: rgba(255,255,255,0.65);
-  --primary: #7b61ff;
-  --accent: #ff6b8a;
-  --success: #28c76f;
-  --danger: #ff5252;
-  --radius: 12px;
-  --shadow: 0 8px 30px rgba(2,6,23,0.6);
-  font-synthesis: none;
-}
 
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -143,7 +129,7 @@ body{
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.03);
     background: rgba(255, 255, 255, 0.02);
-    position: relative;
+  position: relative; /* allow absolute-positioned controls inside */
 }
 .side-thumbs img{width:100%;height:100%;object-fit:cover;display:block}
 
@@ -162,6 +148,7 @@ body{
 .side-thumbs .thumb-meta .meta-dim, .side-thumbs .thumb-meta .meta-new, .side-thumbs .thumb-meta .meta-size, .side-thumbs .thumb-meta .meta-format{color:var(--muted);font-weight:600}
 .side-thumbs .thumb {display:flex;flex-direction:column}
 
+/* delete button overlay in top-right of each thumb */
 .side-thumbs .thumb-delete{
   position: absolute;
   top: 8px;
@@ -181,13 +168,16 @@ body{
 .side-thumbs .thumb-delete i{font-size:12px}
 .side-thumbs .thumb-delete:hover{background:rgba(255,82,82,0.95);border-color:rgba(255,82,82,0.9)}
 
+/* Convert page: enforce compact 3x2 grid and hide paging by limiting visual area */
 .side-thumbs.grid-3x2{
   position: relative;
   grid-template-columns: repeat(3, 1fr);
+  /* increase row height so thumbnail image + metadata fit comfortably */
   grid-auto-rows: 140px;
+  /* leave space for up to two rows of thumbs plus the control bar height */
   max-height: calc((140px * 2) + 10px + 48px);
   overflow: hidden;
-  padding-top: 48px;
+  padding-top: 48px; /* reserve space for controls when present */
 }
 
 .side-thumbs.grid-3x2 .side-thumbs-controls{
@@ -196,7 +186,7 @@ body{
   left: 6px;
   right: 6px;
   z-index: 3;
-  display: flex;
+  display: flex; /* keep same layout */
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -205,6 +195,7 @@ body{
   border-radius: 8px;
 }
 
+/* Ensure each thumb reserves space for metadata and doesn't let the image consume whole cell */
 .side-thumbs.grid-3x2 .thumb{
   display:flex;
   flex-direction:column;
@@ -212,15 +203,16 @@ body{
 }
 .side-thumbs.grid-3x2 .thumb img{
   width:100%;
-  height:auto;
+  height:auto; /* let image size adapt so meta remains visible */
   flex:1 1 auto;
   object-fit:cover;
 }
 .side-thumbs.grid-3x2 .thumb .thumb-meta{
-  flex:0 0 56px;
+  flex:0 0 56px; /* reserve ~56px for metadata area */
   padding:8px 10px;
 }
 
+/* Horizontal scroll variant (used on convert page): single-row scroller */
 .side-thumbs.horizontal-scroll{
   display:flex;
   flex-direction:row;
@@ -247,6 +239,7 @@ body{
 }
 .side-thumbs.horizontal-scroll .thumb .thumb-meta{flex:0 0 auto;padding:8px 6px}
 
+/* Controls for horizontal scroller: overlay left/right */
 .side-thumbs.horizontal-scroll .side-thumbs-controls{
   position: absolute;
   top: 50%;
@@ -260,10 +253,11 @@ body{
 }
 .side-thumbs.horizontal-scroll .side-thumbs-controls button{pointer-events:auto}
 
+/* Make the full-width "Gambar lainnya" card look spacious like the design */
 .side-thumbs.horizontal-scroll{
   padding:22px;
-  min-height:160px;
-  align-items:center;
+  min-height:160px; /* reserve a generous area so card feels roomy */
+  align-items:center; /* vertically center empty state */
 }
 
 .side-thumbs.horizontal-scroll .thumb{
@@ -278,6 +272,7 @@ body{
   height:110px;
 }
 
+/* Placeholder when no thumbnails exist: center content and match muted style */
 .side-thumbs.horizontal-scroll .thumb-empty{
   width:100%;
   min-height:120px;
@@ -289,10 +284,15 @@ body{
   border-radius:8px;
 }
 
+/* Export preview panel styles */
 .export-preview-wrap{display:flex;flex-direction:column;gap:8px}
 .export-preview-wrap .card-header{margin-bottom:6px}
 .export-preview-wrap iframe{background:#fff;border-radius:8px}
 
+/* Side-by-side export preview when first image is portrait (tall).
+   Keep the export preview as a sibling of .canvas-area and place it in the
+   third grid column so it remains outside the canvas area while visually
+   appearing beside it. */
 .editor > #export-preview-section.export-side-by-side{
   grid-column: 3 / 4;
   align-self: start;
@@ -323,7 +323,7 @@ body{
 
 .presets{display:flex;flex-wrap:wrap;gap:8px}
 .preset{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:8px;color:var(--muted);cursor:pointer;font-weight:600}
-.preset.active{background:linear-gradient(135deg,var(--primary),#4ea1ff);color:white;box-shadow:0 8px 24px rgba(123,97,255,0.14);transform:translateY(-4px)}
+.preset.active{background:linear-gradient(135deg,var(--primary),#4ea1ff);color:white;box-shadow:0 8px 24px rgba(123,97,255,0.14)}
 .adjustments{margin-top:12px;display:flex;flex-direction:column;gap:8px}
 .adjustments input[type=range]{width:100%}
 
@@ -395,6 +395,7 @@ body{
 }
 .sizes-card.open .card-header h2[role="button"]::after{transform:rotate(180deg)}
 
+/* Tidy Ukuran Gambar layout */
 .sizes-card .control-row{
   display:flex;
   gap:10px;
@@ -408,48 +409,6 @@ body{
 .sizes-card #custom-size-row{display:flex;gap:10px;width:100%}
 .sizes-card #custom-size-row .field{flex:1}
 .sizes-card .control-row small{color:var(--muted);font-size:12px}
-
-@media (max-width:720px){
-  .app { padding: 12px; }
-  .editor { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
-  .sidebar.right { display: none; }
-  .canvas-area { flex-direction: column; gap: 12px; }
-  .preview-wrap { order: 0; }
-  .export-preview-wrap { width: 100%; }
-  #export-preview-section { grid-column: 1 / -1; max-width: 100%; }
-  .export-preview-wrap iframe { height: 320px; width: 100%; }
-  .preview-container { min-height: 280px; }
-  .side-thumbs.horizontal-scroll { padding: 12px; min-height: 120px; }
-  .side-thumbs.horizontal-scroll .thumb { flex: 0 0 140px; width: 140px; }
-  .card { padding: 12px; }
-  .card-header h2 { font-size: 14px; }
-  .top-actions { flex-wrap: wrap; }
-  #download-list { max-height: 260px; }
-  .apply-modal { width: calc(100% - 24px); margin: 12px; border-radius: 12px; }
-}
-
-@media (max-width: 420px) {
-  body { padding: 10px; }
-  .app { gap: 12px; }
-  .preview-container { min-height: 200px; }
-  .export-preview-wrap iframe { height: 240px; }
-  .side-thumbs.horizontal-scroll .thumb { flex: 0 0 120px; width: 120px; }
-  .apply-btn, .ghost { padding: 8px 10px; font-size: 13px; }
-  #download-list { max-height: 200px; }
-  .apply-modal .modal-body { flex-direction: column; }
-  .apply-modal .modal-right, .apply-modal .modal-left { width: 100%; }
-}
-
-#download-list {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-#download-list::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
 
 @media (max-width:720px){
   .sizes-card .control-row{flex-direction:column;align-items:flex-start}
@@ -538,6 +497,7 @@ body{
   .canvas-area{order:2}
 }
 
+/* make certain sections span the full editor width (useful for convert page full-row sections) */
 .editor > .full-row{
   grid-column: 1 / -1;
   width: 100%;
@@ -611,6 +571,11 @@ body{
 }
 
 .apply-nav{display:flex}
+.apply-nav{display:flex}
+
+@media (max-width:720px){
+  .apply-nav{display:none !important}
+}
 
 @media (max-width:720px) {
   .btn{padding:10px 14px;font-size:15px;min-height:44px}
@@ -653,73 +618,3 @@ body{
   .apply-thumb-scroll .scroll-item img{width:74px;height:120px}
   .apply-thumb-scroll .scroll-item{min-width:78px}
 }
-
-.apply-thumb-nav{display:flex;gap:8px;align-items:center;justify-content:center;margin:10px 0}
-.apply-thumb-nav .thumb-nav{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--muted);cursor:pointer}
-.apply-thumb-nav .thumb-nav:disabled{opacity:0.4;cursor:not-allowed}
-.apply-thumb-nav .thumb-info{min-width:64px;text-align:center;color:var(--muted);font-weight:700}
-
-
-.apply-modal-backdrop{
-  position:fixed;
-  inset:0;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  background:rgba(2,6,23,0.6);
-  z-index:9999;
-  padding:20px;
-}
-.apply-modal-backdrop.show{display:flex}
-.apply-modal{
-  width:min(920px,96%);
-  max-height:calc(100vh - 64px);
-  overflow:auto;
-  border-radius:12px;
-  padding:16px;
-  background:var(--card);
-  box-shadow:var(--shadow);
-  border:1px solid rgba(255,255,255,0.04);
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-}
-.apply-modal .modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.apply-modal .modal-header h3{margin:0;font-size:1.05rem}
-.apply-modal .modal-body{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
-.apply-modal .modal-left{flex:1;min-width:260px}
-.apply-modal .modal-right{width:240px;flex:0 0 240px}
-.apply-modal .size-info{margin-bottom:10px}
-.apply-modal .thumb-list{
-  max-height:320px;
-  overflow:auto;
-  border-radius:8px;
-  border:1px solid rgba(255,255,255,0.03);
-  padding:8px;
-  background:rgba(255,255,255,0.015);
-}
-
-@media (max-width:720px){
-  .apply-modal{width:100%;height:100%;max-height:100vh;border-radius:8px;padding:12px}
-  .apply-modal .modal-body{flex-direction:column}
-  .apply-modal .modal-right{width:100%;flex:1}
-  .apply-modal .thumb-list{max-height:220px}
-  .apply-modal .modal-actions{position:sticky;bottom:0;left:0;right:0;background:linear-gradient(transparent, rgba(0,0,0,0.08));padding-top:10px;padding-bottom:6px;border-top:1px solid rgba(255,255,255,0.02)}
-}
-#apply-modal-thumb-list::-webkit-scrollbar{ 
-  display:none;
-  width:0;
-  height:0;
-}
-.apply-modal .thumb-list .sel-thumb{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px}
-.apply-modal .pick-block .label{font-weight:700;margin-bottom:8px}
-.apply-modal .modal-actions{display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:1px solid rgba(255,255,255,0.02)}
-
-@media (max-width:720px){
-  .apply-modal{width:100%;height:100%;max-height:100vh;border-radius:8px;padding:12px}
-  .apply-modal .modal-body{flex-direction:column}
-  .apply-modal .modal-right{width:100%;flex:1}
-  .apply-modal .thumb-list{max-height:220px}
-  .apply-modal .modal-actions{position:sticky;bottom:0;left:0;right:0;background:linear-gradient(transparent, rgba(0,0,0,0.08));padding-top:10px;padding-bottom:6px;border-top:1px solid rgba(255,255,255,0.02)}
-}
-
