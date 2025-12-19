@@ -42,6 +42,164 @@ document.addEventListener('DOMContentLoaded', () => {
         previewContainer.style.pointerEvents = on ? 'none' : '';
     }
 
+        async function downloadExportAsDocx() {
+                const res = await buildExportResources();
+                if (!res || !Array.isArray(res.resizedImages) || !res.resizedImages.length) throw new Error('No images');
+
+                const jszipSrc = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js';
+                if (typeof window.JSZip === 'undefined') {
+                        await new Promise((resolve, reject) => {
+                                const existing = document.querySelector(`script[src="${jszipSrc}"]`);
+                                if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('Failed to load JSZip'))); return; }
+                                const s = document.createElement('script'); s.src = jszipSrc; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load JSZip')); document.head.appendChild(s);
+                        });
+                }
+                const JSZip = window.JSZip;
+                if (!JSZip) throw new Error('JSZip not available');
+
+                const zip = new JSZip();
+
+                function mmToTwips(mm) { return Math.round(mm * 1440 / 25.4); }
+                function mmToEmu(mm) { return Math.round(mm * 36000); }
+                function base64ToUint8Array(b64) {
+                        const raw = atob(b64);
+                        const arr = new Uint8Array(raw.length);
+                        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+                        return arr;
+                }
+
+                const mediaFolder = zip.folder('word').folder('media');
+                const rels = [];
+                let imgIndex = 1;
+                const secBodies = [];
+
+                for (let i = 0; i < res.resizedImages.length; i++) {
+                        const entry = res.resizedImages[i];
+                        const src = entry.src || entry.data || null;
+                        if (!src) continue;
+                        const m = src.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.*)$/i);
+                        const mime = (m && m[1]) ? m[1] : 'image/jpeg';
+                        const b64 = (m && m[2]) ? m[2] : null;
+                        const ext = (mime.indexOf('png') !== -1) ? 'png' : 'jpg';
+                        const name = `image${imgIndex}.${ext}`;
+                        const data = b64 ? base64ToUint8Array(b64) : null;
+                        if (data) mediaFolder.file(name, data);
+
+                        const rid = `rId${imgIndex}`;
+                        rels.push({ Id: rid, Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', Target: `media/${name}` });
+
+                        let pWmm = entry.pageWmm || res.wmm;
+                        let pHmm = entry.pageHmm || res.hmm;
+                        if ((!entry.pageWmm || !entry.pageHmm) && entry.origW && entry.origH && res.dpi) {
+                                pWmm = Math.max(1, (entry.origW * 25.4) / res.dpi);
+                                pHmm = Math.max(1, (entry.origH * 25.4) / res.dpi);
+                        }
+
+                        const orient = (entry.pageOrientation) ? entry.pageOrientation : (pWmm > pHmm ? 'landscape' : 'portrait');
+                        const twipsW = mmToTwips(pWmm);
+                        const twipsH = mmToTwips(pHmm);
+
+                        const contentWmm = entry.pageIsOriginal ? pWmm : Math.max(1, pWmm - (res.margin * 2));
+                        const contentHmm = entry.pageIsOriginal ? pHmm : Math.max(1, pHmm - (res.margin * 2));
+                        const cx = mmToEmu(contentWmm);
+                        const cy = mmToEmu(contentHmm);
+
+                        const para = `
+<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:r>
+        <w:drawing>
+            <wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">
+                <wp:extent cx="${cx}" cy="${cy}"/>
+                <wp:docPr id="${imgIndex}" name="Image ${imgIndex}"/>
+                <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                        <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                            <pic:nvPicPr>
+                                <pic:cNvPr id="${imgIndex}" name="${name}"/>
+                                <pic:cNvPicPr/>
+                            </pic:nvPicPr>
+                            <pic:blipFill>
+                                <a:blip r:embed="${rid}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+                                <a:stretch><a:fillRect/></a:stretch>
+                            </pic:blipFill>
+                            <pic:spPr>
+                                <a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+                                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                            </pic:spPr>
+                        </pic:pic>
+                    </a:graphicData>
+                </a:graphic>
+            </wp:inline>
+        </w:drawing>
+    </w:r>
+</w:p>
+`;
+
+                        const sect = { p: para, w: pWmm, h: pHmm, orient: orient, isOrig: !!entry.pageIsOriginal };
+                        secBodies.push(sect);
+
+                        imgIndex++;
+                }
+
+                if (secBodies.length === 0) throw new Error('No valid images for docx');
+
+                let bodyContent = '';
+                let finalSectPrXml = '';
+                for (let i = 0; i < secBodies.length; i++) {
+                        bodyContent += secBodies[i].p;
+                        const twW = mmToTwips(secBodies[i].w);
+                        const twH = mmToTwips(secBodies[i].h);
+                        const orientAttr = (secBodies[i].orient === 'landscape') ? ' w:orient="landscape"' : '';
+                        const pm = secBodies[i].isOrig ? 0 : res.margin;
+                        const sectXml = `<w:pgSz w:w="${twW}" w:h="${twH}"${orientAttr}/><w:pgMar w:top="${mmToTwips(pm)}" w:right="${mmToTwips(pm)}" w:bottom="${mmToTwips(pm)}" w:left="${mmToTwips(pm)}"/>`;
+                        if (i < secBodies.length - 1) {
+                                bodyContent += `<w:p><w:pPr><w:sectPr>${sectXml}</w:sectPr></w:pPr></w:p>`;
+                        } else {
+                                finalSectPrXml = `<w:sectPr>${sectXml}</w:sectPr>`;
+                        }
+                }
+
+                const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <w:body>
+        ${bodyContent}
+        ${finalSectPrXml}
+    </w:body>
+</w:document>`;
+
+                zip.folder('_rels').file('.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+
+                let docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
+                for (let i = 0; i < rels.length; i++) {
+                        docRels += `\n  <Relationship Id="${rels[i].Id}" Type="${rels[i].Type}" Target="${rels[i].Target}"/>`;
+                }
+                docRels += `\n</Relationships>`;
+                zip.folder('word').folder('_rels').file('document.xml.rels', docRels);
+
+                zip.folder('word').file('document.xml', documentXml);
+
+                const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Default Extension="png" ContentType="image/png"/>
+              <Default Extension="jpg" ContentType="image/jpeg"/>
+              <Default Extension="jpeg" ContentType="image/jpeg"/>
+              <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+            </Types>`;
+                zip.file('[Content_Types].xml', contentTypes);
+
+                // finalize zip
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'export.docx'; document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
+        }
+
     function formatFileSize(bytes) {
         if (!bytes && bytes !== 0) return '-';
         const k = 1024; const sizes = ['B','KB','MB','GB'];
@@ -764,17 +922,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return map[size] || { w:210, h:297 };
     }
 
-    async function buildExportHTML(formatOverride) {
+    async function buildExportHTML(formatOverride, previewOverride, includeMeta = true) {
         try {
             const fmt = formatOverride || (formatSelect && formatSelect.value) || 'application/pdf';
+            const previewMode = !!previewOverride || (formatOverride === 'preview');
             const paper = (document.getElementById('paper-size') || {}).value || 'a4';
-            const orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
+            let orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
             const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
             const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
 
             const dims = paperSizeToMM(paper);
             let wmm = dims.w, hmm = dims.h;
             if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
+            let isOriginal = (paper === 'original');
 
             const images = [];
             try {
@@ -802,84 +962,159 @@ document.addEventListener('DOMContentLoaded', () => {
             const outFormat = 'image/jpeg';
             const q = (qualitySlider ? (qualitySlider.value / 100) : 0.9);
 
-            const resizedImages = [];
-            for (let i = 0; i < images.length; i++) {
-                const it = images[i];
+            let resizedImages = [];
+            let skipLocalResize = false;
+            if ((fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1)) {
                 try {
-                    let baseSrc = it.src;
-                    try {
-                        const fetchedBlob = await fetchSrcAsBlob(it.src);
-                        const embedded = await blobToDataURL(fetchedBlob);
-                        if (embedded && typeof embedded === 'string' && embedded.indexOf('data:') === 0) {
-                            baseSrc = embedded;
-                        }
-                    } catch (prefetchErr) {
-                        console.warn('prefetch embed failed for', it.src, prefetchErr);
+                    const res = await buildExportResources(fmt);
+                    if (res && Array.isArray(res.resizedImages) && res.resizedImages.length) {
+                        const resDpi = res.dpi || dpi;
+                        const resMargin = (typeof res.margin === 'number') ? res.margin : margin;
+                        resizedImages = res.resizedImages.map((ent) => {
+                            const e = Object.assign({}, ent);
+                            if ((!e.pageWmm || !e.pageHmm) && e.origW && e.origH) {
+                                e.pageWmm = Math.max(1, (e.origW * 25.4) / resDpi);
+                                e.pageHmm = Math.max(1, (e.origH * 25.4) / resDpi);
+                                e.pageOrientation = (e.pageWmm > e.pageHmm) ? 'landscape' : 'portrait';
+                                e.pageContentWmm = (e && e.pageIsOriginal) ? Math.max(1, e.pageWmm) : Math.max(1, e.pageWmm - (resMargin * 2));
+                                e.pageContentHmm = (e && e.pageIsOriginal) ? Math.max(1, e.pageHmm) : Math.max(1, e.pageHmm - (resMargin * 2));
+                            }
+                            return e;
+                        });
+                        wmm = res.wmm || wmm; hmm = res.hmm || hmm;
+                        isOriginal = !!res.isOriginal;
+                        skipLocalResize = true;
                     }
+                } catch (e) {  }
+            }
 
-                    const img = new Image();
-                    const loadSrc = baseSrc;
-                    const meta = await new Promise((resolve) => {
-                        img.onload = () => resolve({ w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 });
-                        img.onerror = () => resolve(null);
-                        img.src = loadSrc;
-                    });
-
-                    let finalDataUrl = baseSrc;
-                    if (meta) {
-                        const srcW = meta.w || targetPxW;
-                        const srcH = meta.h || targetPxH;
-                        const scale = Math.min(targetPxW / srcW, targetPxH / srcH, 1);
-                        const wpx = Math.max(1, Math.round(srcW * scale));
-                        const hpx = Math.max(1, Math.round(srcH * scale));
+            if (!skipLocalResize) {
+                for (let i = 0; i < images.length; i++) {
+                    const it = images[i];
+                    try {
+                        let baseSrc = it.src;
                         try {
-                            const r = await resizeDataURL(baseSrc, wpx, hpx, outFormat, q);
-                            if (r && typeof r === 'string' && r.indexOf('data:') === 0) {
-                                finalDataUrl = r;
-                            } else {
+                            const fetchedBlob = await fetchSrcAsBlob(it.src);
+                            const embedded = await blobToDataURL(fetchedBlob);
+                            if (embedded && typeof embedded === 'string' && embedded.indexOf('data:') === 0) {
+                                baseSrc = embedded;
+                            }
+                        } catch (prefetchErr) {
+                            console.warn('prefetch embed failed for', it.src, prefetchErr);
+                        }
+
+                        const img = new Image();
+                        const loadSrc = baseSrc;
+                        const meta = await new Promise((resolve) => {
+                            img.onload = () => resolve({ w: img.naturalWidth || img.width || 0, h: img.naturalHeight || img.height || 0 });
+                            img.onerror = () => resolve(null);
+                            img.src = loadSrc;
+                        });
+
+                        let finalDataUrl = baseSrc;
+                        if (meta) {
+                            const srcW = meta.w || targetPxW;
+                            const srcH = meta.h || targetPxH;
+                            const scale = Math.min(targetPxW / srcW, targetPxH / srcH, 1);
+                            const wpx = Math.max(1, Math.round(srcW * scale));
+                            const hpx = Math.max(1, Math.round(srcH * scale));
+                            try {
+                                const r = await resizeDataURL(baseSrc, wpx, hpx, outFormat, q);
+                                if (r && typeof r === 'string' && r.indexOf('data:') === 0) {
+                                    finalDataUrl = r;
+                                } else {
+                                    try {
+                                        const b = await fetchSrcAsBlob(baseSrc);
+                                        const dr = await blobToDataURL(b);
+                                        if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr;
+                                    } catch (ee) { }
+                                }
+                            } catch (e) {
                                 try {
                                     const b = await fetchSrcAsBlob(baseSrc);
                                     const dr = await blobToDataURL(b);
                                     if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr;
-                                } catch (ee) {  }
+                                } catch (ee) { }
                             }
-                        } catch (e) {
-                            try {
-                                const b = await fetchSrcAsBlob(baseSrc);
-                                const dr = await blobToDataURL(b);
-                                if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr;
-                            } catch (ee) {  }
                         }
-                    }
-                    try {
+                        try {
+                            if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
+                                try {
+                                    const lastBlob = await fetchSrcAsBlob(baseSrc);
+                                    const lastData = await blobToDataURL(lastBlob);
+                                    if (lastData && typeof lastData === 'string' && lastData.indexOf('data:') === 0) finalDataUrl = lastData;
+                                } catch (ee) { }
+                            }
+                        } catch (e) { }
+
                         if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
-                            try {
-                                const lastBlob = await fetchSrcAsBlob(baseSrc);
-                                const lastData = await blobToDataURL(lastBlob);
-                                if (lastData && typeof lastData === 'string' && lastData.indexOf('data:') === 0) finalDataUrl = lastData;
-                            } catch (ee) {  }
+                            const missingSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect fill="%23f2f2f2" width="100%" height="100%"/>' +
+                                '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial,Helvetica,sans-serif" font-size="20">Gambar tidak tersedia</text></svg>';
+                            finalDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(missingSvg);
                         }
-                    } catch (e) {  }
 
-                    if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
-                        const missingSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect fill="%23f2f2f2" width="100%" height="100%"/>' +
-                            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial,Helvetica,sans-serif" font-size="20">Gambar tidak tersedia</text></svg>';
-                        finalDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(missingSvg);
+                        resizedImages.push({ src: finalDataUrl, label: it.label, origW: (meta && meta.w) ? meta.w : null, origH: (meta && meta.h) ? meta.h : null });
+                    } catch (e) {
+                        console.warn('resizing/embedding failed for', it && it.src, e);
+                        resizedImages.push({ src: it.src, label: it.label, origW: null, origH: null });
                     }
+                }
+            }
 
-                    resizedImages.push({ src: finalDataUrl, label: it.label });
-                } catch (e) {
-                    console.warn('resizing/embedding failed for', it && it.src, e);
-                    resizedImages.push({ src: it.src, label: it.label });
+
+            const a4 = { w: 210, h: 297 };
+            const toleranceMm = 4;
+            if (paper === 'original' && resizedImages.length > 0) {
+                for (let i = 0; i < resizedImages.length; i++) {
+                    try {
+                        const entry = resizedImages[i];
+                        const iw = entry.origW || targetPxW;
+                        const ih = entry.origH || targetPxH;
+                        const useLandscape = (iw && ih) ? (iw > ih) : (orientation === 'landscape');
+                        const pageW = useLandscape ? a4.h : a4.w;
+                        const pageH = useLandscape ? a4.w : a4.h;
+                        entry.pageWmm = pageW;
+                        entry.pageHmm = pageH;
+                        entry.pageIsOriginal = true;
+                        entry.pageOrientation = useLandscape ? 'landscape' : 'portrait';
+                        entry.pageContentWmm = (entry && entry.pageIsOriginal) ? Math.max(1, pageW) : Math.max(1, pageW - (margin * 2));
+                        entry.pageContentHmm = (entry && entry.pageIsOriginal) ? Math.max(1, pageH) : Math.max(1, pageH - (margin * 2));
+                    } catch (e) {
+                        if (!entry.pageWmm) entry.pageWmm = wmm;
+                        if (!entry.pageHmm) entry.pageHmm = hmm;
+                        entry.pageIsOriginal = false;
+                        entry.pageOrientation = (entry && entry.pageOrientation) ? entry.pageOrientation : orientation;
+                        entry.pageContentWmm = contentWmm; entry.pageContentHmm = contentHmm;
+                    }
+                }
+            } else {
+                for (let i = 0; i < resizedImages.length; i++) {
+                    const entry = resizedImages[i];
+                    if (!entry.pageWmm) entry.pageWmm = wmm;
+                    if (!entry.pageHmm) entry.pageHmm = hmm;
+                    entry.pageIsOriginal = false;
+                    entry.pageOrientation = (entry && entry.pageOrientation) ? entry.pageOrientation : orientation;
+                    entry.pageContentWmm = contentWmm; entry.pageContentHmm = contentHmm;
                 }
             }
 
             let pagesHtml = '';
+            let displaySize;
+            if (isOriginal) displaySize = 'original';
+            else if (paper === 'a4') displaySize = `A4 — ${wmm} × ${hmm} mm`;
+            else displaySize = `${wmm}×${hmm} mm`;
             for (let pi = 0; pi < resizedImages.length; pi++) {
                 const img = resizedImages[pi];
-                pagesHtml += `<div class="page" data-page="${pi+1}">`;
+                const pageW = (img && img.pageWmm) ? img.pageWmm : wmm;
+                const pageH = (img && img.pageHmm) ? img.pageHmm : hmm;
+                const pageDisplay = (img && img.pageIsOriginal) ? 'original' : `${pageW}×${pageH} mm`;
+                if (previewMode) {
+                    pagesHtml += `<div class="page" data-page="${pi+1}">`;
+                } else {
+                    pagesHtml += `<div class="page" data-page="${pi+1}" style="width:${pageW}mm;height:${pageH}mm">`;
+                }
                 pagesHtml += `<div class="content">${img && img.src ? `<img src="${img.src}" alt="${(img.label||'image').replace(/"/g,'') }"/>` : '<div style="color:#888">Tidak ada gambar</div>'}</div>`;
-                pagesHtml += `<div class="meta">${(fmt.indexOf('word')!==-1 ? 'Word' : 'PDF')} • ${wmm}×${hmm} mm • Margin ${margin} mm • ${dpi} DPI • Halaman ${pi+1} / ${resizedImages.length}</div>`;
+                if (includeMeta) pagesHtml += `<div class="meta">${(fmt.indexOf('word')!==-1 ? 'Word' : 'PDF')} • ${pageDisplay} • Margin ${margin} mm • ${dpi} DPI • Halaman ${pi+1} / ${resizedImages.length}</div>`;
                 pagesHtml += `</div>`;
             }
 
@@ -887,10 +1122,65 @@ document.addEventListener('DOMContentLoaded', () => {
             let pageRule = '';
             let bodyContent = pagesHtml;
             if (isWord) {
-                pageRule = `@page Section1 { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; } div.Section1{page:Section1}`;
-                bodyContent = `<div class="Section1">${pagesHtml}</div>`;
+                let sectionsCss = '';
+                let sectionsBody = '';
+                for (let si = 0; si < resizedImages.length; si++) {
+                    const entry = resizedImages[si];
+                    const pW = (entry && entry.pageWmm) ? entry.pageWmm : wmm;
+                    const pH = (entry && entry.pageHmm) ? entry.pageHmm : hmm;
+                    const pIsOrig = entry && entry.pageIsOriginal;
+                    const pMargin = pIsOrig ? 0 : margin;
+                    sectionsCss += `@page Section${si+1} { size: ${pW}mm ${pH}mm; margin: ${pMargin}mm; }\n`;
+                    sectionsCss += `div.Section${si+1}{page:Section${si+1};}\n`;
+                    sectionsCss += `div.Section${si+1} .content{padding:${pIsOrig ? 0 : pMargin}mm}\n`;
+                    if (pIsOrig) {
+                        sectionsCss += `div.Section${si+1} .content img{width:100%;height:100%;object-fit:cover;display:block;margin:0}\n`;
+                    } else {
+                        sectionsCss += `div.Section${si+1} .content img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;margin:0 auto}\n`;
+                    }
+
+                    const pageOpen = `<div class="page" data-page="${si+1}" style="width:${pW}mm;height:${pH}mm">`;
+                    let imgTag = '<div style="color:#888">Tidak ada gambar</div>';
+                    if (entry && entry.src) {
+                        const iw = entry.origW || null;
+                        const ih = entry.origH || null;
+                        const imgPhysicalWmm = (iw && dpi) ? Math.max(1, (iw * 25.4) / dpi) : null;
+                        const imgPhysicalHmm = (ih && dpi) ? Math.max(1, (ih * 25.4) / dpi) : null;
+                        const contentW = Math.max(1, pW - (pIsOrig ? 0 : (pMargin * 2)));
+                        const contentH = Math.max(1, pH - (pIsOrig ? 0 : (pMargin * 2)));
+                        let imgStyle = '';
+                        if (pIsOrig) {
+                            const wPt = Math.round(pW * 2.8346456693 * 10) / 10;
+                            const hPt = Math.round(pH * 2.8346456693 * 10) / 10;
+                            const wPx96 = Math.round(pW * 96 / 25.4);
+                            const hPx96 = Math.round(pH * 96 / 25.4);
+                            imgStyle = `width:${wPt}pt;height:${hPt}pt;object-fit:cover;display:block;margin:0`;
+                            imgTag = `<img src="${entry.src}" alt="${(entry.label||'image').replace(/"/g,'')}" width="${wPx96}" height="${hPx96}" style="${imgStyle}"/>`;
+                        } else if (imgPhysicalWmm && imgPhysicalHmm) {
+                            const scale = Math.min(1, contentW / imgPhysicalWmm, contentH / imgPhysicalHmm);
+                            const imgWidthMm = Math.round((imgPhysicalWmm * scale) * 10) / 10;
+                            const imgWidthPt = Math.round(imgWidthMm * 2.8346456693 * 10) / 10;
+                            const imgWidthPx96 = Math.round(imgWidthMm * 96 / 25.4);
+                            imgStyle = `width:${imgWidthPt}pt;height:auto;max-width:100%;max-height:100%;display:block;margin:0 auto;object-fit:contain`;
+                            imgTag = `<img src="${entry.src}" alt="${(entry.label||'image').replace(/"/g,'')}" width="${imgWidthPx96}" style="${imgStyle}"/>`;
+                        } else {
+                            imgStyle = `max-width:100%;max-height:100%;width:auto;height:auto;display:block;margin:0 auto;object-fit:contain`;
+                            imgTag = `<img src="${entry.src}" alt="${(entry.label||'image').replace(/"/g,'')}" style="${imgStyle}"/>`;
+                        }
+                    }
+                    let single = `<div class="Section${si+1}">` + pageOpen + `<div class="content">${imgTag}</div>`;
+                    if (includeMeta) single += `<div class="meta">${(fmt.indexOf('word')!==-1 ? 'Word' : 'PDF')} • ${(pIsOrig ? 'original' : `${pW}×${pH} mm`)} • Margin ${pMargin} mm • ${dpi} DPI • Halaman ${si+1} / ${resizedImages.length}</div>`;
+                    single += `</div></div>`;
+                    sectionsBody += single;
+                }
+                pageRule = sectionsCss;
+                bodyContent = sectionsBody;
             } else {
-                pageRule = `@page { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; } @page { size: ${paper} ${orientation}; }`;
+                if (isOriginal) {
+                    pageRule = `@page { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; }`;
+                } else {
+                    pageRule = `@page { size: ${wmm}mm ${hmm}mm; margin: ${margin}mm; } @page { size: ${paper} ${orientation}; }`;
+                }
             }
 
             const headMeta = isWord ?
@@ -901,12 +1191,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const wordXml = isWord ? '<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>' : '';
 
+            let contentPadding = isOriginal ? '0' : `${margin}mm`;
+            let bodyPadding = isOriginal ? '0' : '20px';
+            let pageBoxShadow = isOriginal ? 'none' : '0 4px 18px rgba(2,6,23,0.25)';
+            let pageMarginBottom = isOriginal ? '0' : '18px';
+            let imgRule = isOriginal ? `width:100%;height:100%;object-fit:cover;display:block` : `max-width:100%;max-height:100%;object-fit:contain;display:block`;
+            if (previewMode) {
+                if (!isOriginal) {
+                    contentPadding = `${margin}mm`;
+                } else {
+                    contentPadding = '0';
+                }
+                bodyPadding = '12px';
+                pageBoxShadow = '0 12px 36px rgba(2,6,23,0.25)';
+                pageMarginBottom = '20px';
+                if (isOriginal) {
+                    imgRule = `width:100%;height:100%;object-fit:cover;display:block;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,0.22);border:1px solid rgba(0,0,0,0.06)`;
+                } else {
+                    imgRule = `width:100%;height:100%;object-fit:contain;display:block;margin:auto;border-radius:0;box-shadow:none;border:none`;
+                }
+            }
+            const pageWidth = previewMode ? '100%' : `${wmm}mm`;
+            const pageHeight = previewMode ? 'auto' : `${hmm}mm`;
+            const contentHeight = '100%';
+            const bodyBg = previewMode ? '#ffffff' : '#e9edf2';
+
+            let previewAspectRule = '';
+            if (previewMode) {
+                if (!isOriginal) {
+                    previewAspectRule = `.page{width:100%;max-width:820px;aspect-ratio:${wmm}/${hmm};margin:12px auto}`;
+                } else {
+                    previewAspectRule = `.page{width:100%;max-width:820px;margin:12px auto}`;
+                }
+            }
             const html = htmlOpen + `<head>` + headMeta + `<style>`
                 + pageRule + `\n` +
-                `body{background:#e9edf2;margin:0;padding:20px;font-family:Arial,Helvetica,sans-serif}\n` +
-                `.page{width:${wmm}mm;height:${hmm}mm;margin:0 auto;background:#fff;box-shadow:0 4px 18px rgba(2,6,23,0.25);position:relative;margin-bottom:18px;page-break-after:always}\n` +
-                `.content{box-sizing:border-box;padding:${margin}mm;display:flex;align-items:center;justify-content:center;height:100%;}\n` +
-                `.content img{max-width:100%;max-height:100%;object-fit:contain;display:block}\n` +
+                `body{background:${bodyBg};margin:0;padding:${bodyPadding};font-family:Arial,Helvetica,sans-serif}\n` +
+                `.page{margin:0 auto;background:#fff;box-shadow:${pageBoxShadow};position:relative;margin-bottom:${pageMarginBottom};page-break-after:always}\n` +
+                previewAspectRule + `\n` +
+                `.content{box-sizing:border-box;padding:${contentPadding};display:flex;align-items:center;justify-content:center;height:${contentHeight};}\n` +
+                `.content img{${imgRule}}\n` +
                 `.meta{position:absolute;left:8px;bottom:6px;color:#666;font-size:11px}\n` +
             `</style></head><body>` + wordXml + bodyContent + `</body></html>`;
             return html;
@@ -920,7 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!iframe) return;
             const fmt = forceFormat || (formatSelect && formatSelect.value) || 'application/pdf';
             if (label) label.textContent = (fmt.indexOf('word')!==-1 ? 'Word' : 'PDF');
-            const html = await buildExportHTML(fmt);
+            const html = await buildExportHTML(fmt, true);
             try { iframe.srcdoc = html; } catch (e) { iframe.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(html); }
             try {
                 const parser = new DOMParser();
@@ -969,7 +1293,7 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onload = function () {
                 const w = img.naturalWidth || img.width || 0;
                 const h = img.naturalHeight || img.height || 0;
-                if (h > w) moveToCanvasSide(); else moveToFullRow();
+                if (h > w) moveToFullRow(); else moveToFullRow();
             };
             img.onerror = function () { moveToFullRow(); };
             img.src = imgSrc;
@@ -986,6 +1310,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const orientEls = document.querySelectorAll('input[name="orientation"]'); orientEls.forEach(el => el.addEventListener('change', () => updateExportPreview()));
         const dpiEl = document.getElementById('dpi'); if (dpiEl) dpiEl.addEventListener('input', () => updateExportPreview());
         const marginEl = document.getElementById('margin'); if (marginEl) marginEl.addEventListener('input', () => updateExportPreview());
+
+        (function () {
+            const mq = window.matchMedia('(max-width:720px)');
+            const placePreview = () => {
+                try {
+                    const previewContainer = document.getElementById('preview-container');
+                    const sizesCard = document.querySelector('.sizes-card');
+                    const canvasArea = document.querySelector('.canvas-area');
+                    const previewWrap = canvasArea ? canvasArea.querySelector('.preview-wrap') : null;
+                    if (!previewContainer || !sizesCard || !previewWrap) return;
+                    if (mq.matches) {
+                        if (sizesCard.nextSibling !== previewContainer) {
+                            sizesCard.parentNode.insertBefore(previewContainer, sizesCard.nextSibling);
+                        }
+                    } else {
+                        const infoBar = previewWrap.querySelector('.info-bar');
+                        if (infoBar && infoBar.previousSibling !== previewContainer) {
+                            previewWrap.insertBefore(previewContainer, infoBar);
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            };
+            try { placePreview(); } catch (e) {}
+            mq.addEventListener ? mq.addEventListener('change', placePreview) : mq.addListener(placePreview);
+            window.addEventListener('resize', placePreview);
+        })();
         if (imagePreview) imagePreview.addEventListener('load', () => updateExportPreview());
     } catch (e) {}
 
@@ -1034,13 +1384,14 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const fmt = formatOverride || (formatSelect && formatSelect.value) || 'application/pdf';
             const paper = (document.getElementById('paper-size') || {}).value || 'a4';
-            const orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
+            let orientation = (document.querySelector('input[name="orientation"]:checked') || {}).value || 'portrait';
             const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
             const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
 
             const dims = paperSizeToMM(paper);
             let wmm = dims.w, hmm = dims.h;
             if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
+            let isOriginal = (paper === 'original');
 
             const contentWmm = Math.max(1, wmm - (margin * 2));
             const contentHmm = Math.max(1, hmm - (margin * 2));
@@ -1089,18 +1440,48 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (e) { try { const b = await fetchSrcAsBlob(baseSrc); const dr = await blobToDataURL(b); if (dr && dr.indexOf('data:') === 0) finalDataUrl = dr; } catch (ee) {} }
                     }
 
-                    // ensure data: url
                     if (!finalDataUrl || typeof finalDataUrl !== 'string' || finalDataUrl.indexOf('data:') !== 0) {
                         const missingSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect fill="%23f2f2f2" width="100%" height="100%"/>' +
                             '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="Arial,Helvetica,sans-serif" font-size="20">Gambar tidak tersedia</text></svg>';
                         finalDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(missingSvg);
                     }
 
-                    resizedImages.push({ src: finalDataUrl, label: it.label });
+                    resizedImages.push({ src: finalDataUrl, label: it.label, origW: (meta && meta.w) ? meta.w : null, origH: (meta && meta.h) ? meta.h : null });
                 } catch (e) { console.warn('resizing/embedding failed for', it && it.src, e); resizedImages.push({ src: it.src, label: it.label }); }
             }
 
-            return { resizedImages: resizedImages, wmm: wmm, hmm: hmm, contentWmm: contentWmm, contentHmm: contentHmm, margin: margin, dpi: dpi, orientation: orientation };
+            try {
+                const a4 = { w: 210, h: 297 };
+                const toleranceMm = 4;
+                if (isOriginal && resizedImages.length > 0) {
+                    for (let i = 0; i < resizedImages.length; i++) {
+                        const entry = resizedImages[i];
+                        const iw = entry.origW || targetPxW;
+                        const ih = entry.origH || targetPxH;
+                        const useLandscape = (iw && ih) ? (iw > ih) : (orientation === 'landscape');
+                        entry.pageWmm = useLandscape ? a4.h : a4.w;
+                        entry.pageHmm = useLandscape ? a4.w : a4.h;
+                        entry.pageIsOriginal = true;
+                        entry.pageOrientation = useLandscape ? 'landscape' : 'portrait';
+                        entry.pageContentWmm = (entry && entry.pageIsOriginal) ? Math.max(1, (entry.pageWmm || wmm)) : Math.max(1, (entry.pageWmm || wmm) - (margin * 2));
+                        entry.pageContentHmm = (entry && entry.pageIsOriginal) ? Math.max(1, (entry.pageHmm || hmm)) : Math.max(1, (entry.pageHmm || hmm) - (margin * 2));
+                    }
+                } else {
+                    for (let i = 0; i < resizedImages.length; i++) {
+                        const entry = resizedImages[i];
+                        if (!entry.pageWmm) entry.pageWmm = wmm;
+                        if (!entry.pageHmm) entry.pageHmm = hmm;
+                        entry.pageIsOriginal = false;
+                        entry.pageOrientation = (entry && entry.pageOrientation) ? entry.pageOrientation : orientation;
+                        entry.pageContentWmm = contentWmm; entry.pageContentHmm = contentHmm;
+                    }
+                }
+            } catch (e) {  }
+
+            const finalContentWmm = Math.max(1, wmm - (margin * 2));
+            const finalContentHmm = Math.max(1, hmm - (margin * 2));
+            const allowUpscale = (paper === 'a4');
+            return { resizedImages: resizedImages, wmm: wmm, hmm: hmm, contentWmm: finalContentWmm, contentHmm: finalContentHmm, margin: margin, dpi: dpi, orientation: orientation, isOriginal: isOriginal, allowUpscale: allowUpscale };
         } catch (e) { throw e; }
     }
 
@@ -1123,9 +1504,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const PDFLib = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : (window.jsPDF || (window.jspdf && window.jspdf.jsPDF));
             if (!PDFLib) throw new Error('jsPDF not available');
 
-            const pdf = new PDFLib({ unit: 'mm', format: [res.wmm, res.hmm], orientation: res.orientation });
-            for (let i = 0; i < res.resizedImages.length; i++) {
-                const page = res.resizedImages[i];
+            const pages = res.resizedImages;
+            if (!pages || !pages.length) throw new Error('No images to render');
+            const firstPage = pages[0];
+            const origScale = 1.0;
+            const pdf = new PDFLib({ unit: 'mm', format: [ (firstPage.pageWmm || res.wmm) * origScale, (firstPage.pageHmm || res.hmm) * origScale ], orientation: firstPage.pageOrientation || res.orientation });
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i];
+                if (i > 0) {
+                    pdf.addPage([ (page.pageWmm || res.wmm) * origScale, (page.pageHmm || res.hmm) * origScale ], page.pageOrientation || res.orientation);
+                }
                 const img = new Image();
                 img.src = page.src;
                 await new Promise((r) => { img.onload = r; img.onerror = r; });
@@ -1133,21 +1521,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ih = img.naturalHeight || img.height || 1;
                 const imgWmm = (iw * 25.4) / (res.dpi || 300);
                 const imgHmm = (ih * 25.4) / (res.dpi || 300);
-                const maxW = res.contentWmm; const maxH = res.contentHmm;
+                const pageContentW = (page.pageContentWmm || Math.max(1, (page.pageWmm || res.wmm) - (res.margin * 2))) * origScale;
+                const pageContentH = (page.pageContentHmm || Math.max(1, (page.pageHmm || res.hmm) - (res.margin * 2))) * origScale;
                 let drawW = imgWmm; let drawH = imgHmm;
-                const scale = Math.min(maxW / drawW, maxH / drawH, 1);
-                drawW = Math.round(drawW * scale * 100) / 100; drawH = Math.round(drawH * scale * 100) / 100;
-                const x = res.margin + Math.max(0, (maxW - drawW) / 2);
-                const y = res.margin + Math.max(0, (maxH - drawH) / 2);
+                let x = res.margin * origScale + ((pageContentW - drawW) / 2);
+                let y = res.margin * origScale + ((pageContentH - drawH) / 2);
+                if (page.pageIsOriginal) {
+                    drawW = (page.pageWmm || res.wmm) * origScale;
+                    drawH = (page.pageHmm || res.hmm) * origScale;
+                    x = 0; y = 0;
+                } else {
+                    let scaleVal = res.allowUpscale ? Math.min(pageContentW / drawW, pageContentH / drawH) : Math.min(pageContentW / drawW, pageContentH / drawH, 1);
+                    if (!isFinite(scaleVal) || scaleVal <= 0) scaleVal = 1;
+                    drawW = Math.round(drawW * scaleVal * 100) / 100; drawH = Math.round(drawH * scaleVal * 100) / 100;
+                    x = res.margin * origScale + ((pageContentW - drawW) / 2);
+                    y = res.margin * origScale + ((pageContentH - drawH) / 2);
+                }
 
                 try {
                     pdf.addImage(page.src, 'JPEG', x, y, drawW, drawH);
                 } catch (e) {
-                    // try PNG
                     try { pdf.addImage(page.src, 'PNG', x, y, drawW, drawH); } catch (ee) { console.warn('addImage failed', ee); }
                 }
-
-                if (i < res.resizedImages.length - 1) pdf.addPage([res.wmm, res.hmm], res.orientation);
             }
 
             const filename = `export.pdf`;
@@ -1210,7 +1605,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dpi = parseInt((document.getElementById('dpi') || {}).value, 10) || 300;
                 const margin = parseInt((document.getElementById('margin') || {}).value, 10) || 10;
 
-                const html = await buildExportHTML(fmt);
+                const includeMetaForDownload = !(fmt.indexOf('word')!==-1 || fmt.indexOf('msword')!==-1);
+                const html = await buildExportHTML(fmt, false, includeMetaForDownload);
 
                 if (fmt.indexOf('pdf') !== -1) {
                     await ensureHtml2PdfLoaded();
@@ -1242,17 +1638,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) { console.warn('validation of wrapped images failed', e); }
 
-                    const dims = paperSizeToMM(paper);
+                    let finalRes = null;
+                    try { finalRes = await buildExportResources(); } catch (e) { finalRes = null; }
+
+                    const dims = finalRes ? { w: finalRes.wmm, h: finalRes.hmm } : paperSizeToMM(paper);
                     let wmm = dims.w, hmm = dims.h;
+                    if (finalRes) { wmm = finalRes.wmm; hmm = finalRes.hmm; }
                     if (orientation === 'landscape') { const t = wmm; wmm = hmm; hmm = t; }
 
                     const filename = `export.${fmt.indexOf('word') !== -1 ? 'doc' : 'pdf'}`;
                     const opt = {
-                        margin: margin,
+                        margin: (finalRes && finalRes.isOriginal) ? 0 : margin,
                         filename: filename,
                         image: { type: 'jpeg', quality: (qualitySlider ? (qualitySlider.value / 100) : 0.9) },
                         html2canvas: { scale: Math.min(2, window.devicePixelRatio || 1), useCORS: true, allowTaint: true },
-                        jsPDF: { unit: 'mm', format: [wmm, hmm], orientation: orientation }
+                        jsPDF: { unit: 'mm', format: [wmm, hmm], orientation: (finalRes && finalRes.orientation) ? finalRes.orientation : orientation }
                     };
 
                     showNotification('Mempersiapkan ekspor PDF — menunggu gambar termuat...', 'success');
@@ -1286,12 +1686,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (fmt.indexOf('word') !== -1 || fmt.indexOf('msword') !== -1) {
-                    const blob = new Blob([html], { type: 'application/msword' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = `export.doc`;
-                    document.body.appendChild(a); a.click(); a.remove();
-                    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
-                    return;
+                    try {
+                        await downloadExportAsDocx();
+                        try { wrap.remove(); } catch (e) {}
+                        return;
+                    } catch (e) {
+                        console.warn('docx generation failed, falling back to .doc HTML', e);
+                        const blob = new Blob([html], { type: 'application/msword' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = url; a.download = `export.doc`;
+                        document.body.appendChild(a); a.click(); a.remove();
+                        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
+                        return;
+                    }
                 }
 
                 const blob = new Blob([html], { type: 'text/html' });
