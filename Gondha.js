@@ -1189,7 +1189,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const htmlOpen = isWord ? '<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' : '<!doctype html><html>';
 
-            const wordXml = isWord ? '<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>' : '';
+            // Removed forcing Word view/zoom to respect user's default Word settings.
+            const wordXml = '';
 
             let contentPadding = isOriginal ? '0' : `${margin}mm`;
             let bodyPadding = isOriginal ? '0' : '20px';
