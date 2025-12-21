@@ -193,9 +193,10 @@ document.addEventListener('DOMContentLoaded', () => {
             </Types>`;
                 zip.file('[Content_Types].xml', contentTypes);
 
-                // finalize zip
+                // finalize zip and ensure correct .docx MIME so mobile browsers don't treat it as .zip
                 const blob = await zip.generateAsync({ type: 'blob' });
-                const url = URL.createObjectURL(blob);
+                const finalBlob = new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                const url = URL.createObjectURL(finalBlob);
                 const a = document.createElement('a'); a.href = url; a.download = 'export.docx'; document.body.appendChild(a); a.click(); a.remove();
                 setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 5000);
         }
@@ -321,8 +322,217 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(true);
         const files = Array.from(fileInput.files);
         files.forEach((f, idx) => {
+            const isDocx = (f && f.name && f.name.toLowerCase().endsWith('.docx')) || (f && f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            const isPdf = (f && f.name && f.name.toLowerCase().endsWith('.pdf')) || (f && f.type === 'application/pdf');
             const reader = new FileReader();
-            reader.onload = (ev) => {
+            reader.onload = async (ev) => {
+                const isImageFile = f && f.type && (f.type.indexOf('image/') === 0);
+                if (!isImageFile) {
+                    // If it's a PDF, render pages via PDF.js
+                    if (isPdf) {
+                        try {
+                            const arrayBuffer = ev && ev.target ? ev.target.result : null;
+                            if (arrayBuffer) {
+                                if (typeof window.pdfjsLib === 'undefined') {
+                                    await new Promise((resolve, reject) => {
+                                        const src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+                                        const existing = document.querySelector(`script[src="${src}"]`);
+                                        if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('Failed to load PDF.js'))); return; }
+                                        const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load PDF.js')); document.head.appendChild(s);
+                                    });
+                                }
+                                try {
+                                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+                                } catch (e) {}
+                                const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+                                const pdfDoc = await loadingTask.promise;
+                                const numPages = pdfDoc.numPages || 0;
+                                const limit = Math.min(numPages, 10);
+                                const images = [];
+                                for (let p = 1; p <= limit; p++) {
+                                    try {
+                                        const page = await pdfDoc.getPage(p);
+                                        const viewport = page.getViewport({ scale: 1.5 });
+                                        const canvas = document.createElement('canvas');
+                                        const ctx = canvas.getContext('2d');
+                                        canvas.width = Math.round(viewport.width);
+                                        canvas.height = Math.round(viewport.height);
+                                        const renderTask = page.render({ canvasContext: ctx, viewport: viewport });
+                                        await (renderTask && renderTask.promise ? renderTask.promise : renderTask);
+                                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                                        images.push({ src: dataUrl, name: `page-${p}.jpg` });
+                                    } catch (pe) { console.warn('pdf page render failed', pe); }
+                                }
+
+                                if (images.length) {
+                                    images.forEach((img, i) => {
+                                        try {
+                                            if (idx === 0 && i === 0) return; // skip duplicate preview
+                                            addToSideThumbnails({ src: img.src, name: (f.name || 'pdf') + '/' + img.name, width: null, height: null, size: null, type: null });
+                                        } catch (e) {}
+                                    });
+                                    if (idx === 0) {
+                                        currentFile = f;
+                                        currentPreviewSideIndex = null;
+                                        originalImage = new Image();
+                                        originalImage.onload = () => {
+                                            originalWidth = originalImage.width; originalHeight = originalImage.height;
+                                            aspectRatio = originalWidth / originalHeight || 1;
+                                            if (originalDimensions) originalDimensions.textContent = `${originalWidth} × ${originalHeight}`;
+                                            if (widthInput) widthInput.value = originalWidth;
+                                            if (heightInput) heightInput.value = originalHeight;
+                                            if (fileSize) fileSize.textContent = formatFileSize(currentFile.size || 0);
+                                            if (fileFormat) fileFormat.textContent = (currentFile.type ? currentFile.type.split('/')[1] : 'pdf').toUpperCase();
+                                            if (imagePreview) { imagePreview.src = images[0].src; imagePreview.style.display = 'block'; }
+                                            if (placeholder) placeholder.style.display = 'none';
+                                            initialState = {
+                                                src: images[0].src,
+                                                width: originalWidth,
+                                                height: originalHeight,
+                                                brightness: brightnessEl ? parseInt(brightnessEl.value) : 100,
+                                                contrast: contrastEl ? parseInt(contrastEl.value) : 100,
+                                                blur: blurEl ? parseInt(blurEl.value) : 6,
+                                                quality: qualitySlider ? parseInt(qualitySlider.value) : 80,
+                                                effect: 'normal',
+                                                name: currentFile && currentFile.name ? currentFile.name : 'pdf',
+                                                size: currentFile && currentFile.size ? currentFile.size : null,
+                                                type: currentFile && currentFile.type ? currentFile.type : null
+                                            };
+                                            setLoading(false);
+                                            showNotification('Gambar dari PDF berhasil diunggah!');
+                                        };
+                                        originalImage.src = images[0].src;
+                                    } else {
+                                        setLoading(false);
+                                        showNotification(`${images.length} halaman diekspor sebagai gambar dari PDF`);
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (e) { console.warn('pdf extraction failed', e); }
+                    }
+
+                    // If it's a .docx, try to extract images using JSZip
+                    if (isDocx) {
+                        try {
+                            const arrayBuffer = ev && ev.target ? ev.target.result : null;
+                            if (arrayBuffer) {
+                                if (typeof window.JSZip === 'undefined') {
+                                    await new Promise((resolve, reject) => {
+                                        const src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js';
+                                        const existing = document.querySelector(`script[src="${src}"]`);
+                                        if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('Failed to load JSZip'))); return; }
+                                        const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Failed to load JSZip')); document.head.appendChild(s);
+                                    });
+                                }
+                                const zip = new window.JSZip();
+                                await zip.loadAsync(arrayBuffer);
+                                const media = zip.folder('word').folder('media');
+                                const images = [];
+                                if (media) {
+                                    const entries = [];
+                                    media.forEach((relativePath, file) => { entries.push({ relativePath, file }); });
+                                    for (let e of entries) {
+                                        try {
+                                            const name = e.relativePath || '';
+                                            const ext = (name.split('.').pop() || '').toLowerCase();
+                                            const base64 = await e.file.async('base64');
+                                            let mime = 'image/jpeg';
+                                            if (ext === 'png') mime = 'image/png';
+                                            else if (ext === 'gif') mime = 'image/gif';
+                                            else if (ext === 'webp') mime = 'image/webp';
+                                            else if (ext === 'bmp') mime = 'image/bmp';
+                                            const dataUrl = `data:${mime};base64,${base64}`;
+                                            images.push({ src: dataUrl, name: name });
+                                        } catch (ee) { /* ignore file errors */ }
+                                    }
+                                }
+
+                                // If we found images inside the .docx, add them to side thumbnails and set preview
+                                if (images.length) {
+                                    images.forEach((img, i) => {
+                                        try {
+                                            // If this is the first uploaded file and we're going to use the
+                                            // first extracted image as the main preview, don't add it
+                                            // to side thumbnails to avoid duplicating the preview.
+                                            if (idx === 0 && i === 0) return;
+                                            addToSideThumbnails({ src: img.src, name: (f.name || 'docx') + '/' + img.name, width: null, height: null, size: null, type: null });
+                                        } catch (e) {}
+                                    });
+                                    // set first image as preview if first file
+                                    if (idx === 0) {
+                                        currentFile = f;
+                                        currentPreviewSideIndex = null;
+                                        originalImage = new Image();
+                                        originalImage.onload = () => {
+                                            originalWidth = originalImage.width; originalHeight = originalImage.height;
+                                            aspectRatio = originalWidth / originalHeight || 1;
+                                            if (originalDimensions) originalDimensions.textContent = `${originalWidth} × ${originalHeight}`;
+                                            if (widthInput) widthInput.value = originalWidth;
+                                            if (heightInput) heightInput.value = originalHeight;
+                                            if (fileSize) fileSize.textContent = formatFileSize(currentFile.size || 0);
+                                            if (fileFormat) fileFormat.textContent = (currentFile.type ? currentFile.type.split('/')[1] : 'document').toUpperCase();
+                                            if (imagePreview) { imagePreview.src = images[0].src; imagePreview.style.display = 'block'; }
+                                            if (placeholder) placeholder.style.display = 'none';
+                                            initialState = {
+                                                src: images[0].src,
+                                                width: originalWidth,
+                                                height: originalHeight,
+                                                brightness: brightnessEl ? parseInt(brightnessEl.value) : 100,
+                                                contrast: contrastEl ? parseInt(contrastEl.value) : 100,
+                                                blur: blurEl ? parseInt(blurEl.value) : 6,
+                                                quality: qualitySlider ? parseInt(qualitySlider.value) : 80,
+                                                effect: 'normal',
+                                                name: currentFile && currentFile.name ? currentFile.name : 'document',
+                                                size: currentFile && currentFile.size ? currentFile.size : null,
+                                                type: currentFile && currentFile.type ? currentFile.type : null
+                                            };
+                                            setLoading(false);
+                                            showNotification('Gambar dari dokumen berhasil diunggah!');
+                                        };
+                                        originalImage.src = images[0].src;
+                                    } else {
+                                        setLoading(false);
+                                        showNotification(`${images.length} gambar diekstrak dari dokumen`);
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('docx extraction failed', e);
+                        }
+                    }
+
+                    // Handle non-image uploads (e.g., DOC) — fallback: no preview image.
+                    if (idx === 0) {
+                        currentFile = f;
+                        currentPreviewSideIndex = null;
+                        originalImage = null;
+                        if (fileSize) fileSize.textContent = formatFileSize(currentFile.size || 0);
+                        if (fileFormat) fileFormat.textContent = (currentFile.type || 'document').toUpperCase();
+                        initialState = {
+                            src: null,
+                            width: null,
+                            height: null,
+                            brightness: brightnessEl ? parseInt(brightnessEl.value) : 100,
+                            contrast: contrastEl ? parseInt(contrastEl.value) : 100,
+                            blur: blurEl ? parseInt(blurEl.value) : 6,
+                            quality: qualitySlider ? parseInt(qualitySlider.value) : 80,
+                            effect: 'document',
+                            name: currentFile && currentFile.name ? currentFile.name : 'document',
+                            size: currentFile && currentFile.size ? currentFile.size : null,
+                            type: currentFile && currentFile.type ? currentFile.type : null
+                        };
+                        setLoading(false);
+                        showNotification('Dokumen berhasil diunggah! (tidak ada gambar terdeteksi)');
+                    } else {
+                        // additional non-image files -> add to side thumbnails list (no image preview)
+                        try {
+                            addToSideThumbnails({ src: null, name: f.name || 'document', width: null, height: null, size: f.size || null, type: f.type || null });
+                        } catch (e) {}
+                    }
+                    return;
+                }
                 if (idx === 0) {
                     try {
                         const existingPreviewSrc = (imagePreview && imagePreview.src) ? imagePreview.src : null;
@@ -389,7 +599,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (e) {  }
             };
-            reader.readAsDataURL(f);
+            try {
+                if (isDocx || isPdf) reader.readAsArrayBuffer(f);
+                else reader.readAsDataURL(f);
+            } catch (e) { reader.readAsDataURL(f); }
         });
 
         if (files.length > 1) {
@@ -1189,7 +1402,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const htmlOpen = isWord ? '<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' : '<!doctype html><html>';
 
-            // Removed forcing Word view/zoom to respect user's default Word settings.
             const wordXml = '';
 
             let contentPadding = isOriginal ? '0' : `${margin}mm`;
