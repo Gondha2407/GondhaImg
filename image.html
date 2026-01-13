@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>vektor — Image</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="image.css">
+    <script defer src="image.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"><i class="fas fa-image"></i></div>
+          <div class="brand-text"><h1>Image</h1></div>
+        </div>
+      </header>
+
+      <main class="editor">
+        <aside class="sidebar">
+          <section class="card upload-card" aria-labelledby="upload-title">
+            <div class="card-header"><h2 id="upload-title"><i class="fas fa-cloud-upload-alt"></i> Unggah</h2></div>
+            <label for="file-input" class="upload-area" id="upload-area" tabindex="0">
+              <div class="upload-icon"><i class="fas fa-image"></i></div>
+              <div class="upload-text">
+                <strong>Klik atau seret gambar</strong>
+                <small>JPG, PNG, WEBP • max 10MB</small>
+              </div>
+            </label>
+            <input type="file" id="file-input" class="visually-hidden" accept="image/*" aria-label="Unggah gambar" />
+          </section>
+
+          <section class="card compact" aria-labelledby="controls-title">
+            <div class="card-header"><h2 id="controls-title"><i class="fas fa-sliders-h"></i> Kontrol</h2></div>
+            <div class="control-row">
+              <label for="zoom">Zoom (<span id="zoom-value">100%</span>)</label>
+              <input id="zoom" type="range" min="10" max="500" value="100">
+              <input id="zoom-input" type="number" min="10" step="10" value="100" aria-label="Zoom persen">
+            </div>
+
+            <div id="crop-section" hidden>
+              <div class="divider" role="separator" aria-hidden="true"></div>
+              <div class="subhead" aria-label="Crop">Crop</div>
+
+              <div class="segmented" role="tablist" aria-label="Mode Crop">
+                <input class="visually-hidden" type="radio" name="crop-mode" id="crop-mode-manual" value="manual" checked>
+                <label class="segmented-btn" for="crop-mode-manual" role="tab" aria-controls="crop-auto-panel">Manual</label>
+
+                <input class="visually-hidden" type="radio" name="crop-mode" id="crop-mode-auto" value="auto">
+                <label class="segmented-btn" for="crop-mode-auto" role="tab" aria-controls="crop-auto-panel">Aspect Ratio</label>
+
+                <input class="visually-hidden" type="radio" name="crop-mode" id="crop-mode-straighten" value="straighten">
+                <label class="segmented-btn" for="crop-mode-straighten" role="tab" aria-controls="straighten-panel">Luruskan</label>
+              </div>
+
+              <div id="crop-auto-panel" class="mode-panel" role="tabpanel" hidden>
+                <div class="control-row">
+                  <label>Ukuran</label>
+                </div>
+
+                <div class="segmented" role="tablist" aria-label="Mode Ukuran Crop">
+                  <input class="visually-hidden" type="radio" name="crop-auto-kind" id="crop-kind-ratio" value="ratio" checked>
+                  <label class="segmented-btn" for="crop-kind-ratio" role="tab" aria-controls="crop-aspect-wrap">Rasio</label>
+
+                  <input class="visually-hidden" type="radio" name="crop-auto-kind" id="crop-kind-preset" value="preset">
+                  <label class="segmented-btn" for="crop-kind-preset" role="tab" aria-controls="crop-preset-wrap">Preset</label>
+                </div>
+
+                <div id="crop-aspect-wrap">
+                  <div class="aspect-grid" id="crop-aspect-grid" aria-label="Pilih rasio crop">
+                    <button class="aspect-tile" type="button" data-aspect="1:1" aria-pressed="true" disabled>
+                      <span class="shape" style="aspect-ratio: 1 / 1" aria-hidden="true"></span>
+                      <span class="ratio">1:1</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="4:3" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 4 / 3" aria-hidden="true"></span>
+                      <span class="ratio">4:3</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="3:4" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 3 / 4" aria-hidden="true"></span>
+                      <span class="ratio">3:4</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="16:9" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 16 / 9" aria-hidden="true"></span>
+                      <span class="ratio">16:9</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="9:16" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 9 / 16" aria-hidden="true"></span>
+                      <span class="ratio">9:16</span>
+                    </button>
+
+                    <button class="aspect-tile" type="button" data-aspect="3:2" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 3 / 2" aria-hidden="true"></span>
+                      <span class="ratio">3:2</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="2:1" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 2 / 1" aria-hidden="true"></span>
+                      <span class="ratio">2:1</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="1:2" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 1 / 2" aria-hidden="true"></span>
+                      <span class="ratio">1:2</span>
+                    </button>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="2:1" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 2 / 1" aria-hidden="true"></span>
+                      <span class="ratio">2:1</span>
+                    </button>aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 1 / 2" aria-hidden="true"></span>
+                      <span class="ratio">1:2</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="21:9" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 21 / 9" aria-hidden="true"></span>
+                      <span class="ratio">21:9</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="9:21" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 9 / 21" aria-hidden="true"></span>
+                      <span class="ratio">9:21</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="297:210" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 297 / 210" aria-hidden="true"></span>
+                      <span class="ratio">A4 L</span>
+                    </button>
+                    <button class="aspect-tile" type="button" data-aspect="210:297" aria-pressed="false" disabled>
+                      <span class="shape" style="aspect-ratio: 210 / 297" aria-hidden="true"></span>
+                      <span class="ratio">A4 P</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="crop-preset-wrap" hidden>
+                  <div class="aspect-grid" id="crop-preset-grid" aria-label="Pilih preset ukuran crop">
+                    <button class="aspect-tile preset-size" data-preset="1920x1080" type="button" aria-label="Desktop / Laptop 1920×1080" title="Desktop / Laptop" aria-pressed="false" disabled><i class="fas fa-desktop" aria-hidden="true"></i><br><small>1920×1080</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1366x768" type="button" aria-label="Laptop 1366×768" title="Laptop" aria-pressed="false" disabled><i class="fas fa-laptop" aria-hidden="true"></i><br><small>1366×768</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1440x900" type="button" aria-label="Laptop 1440×900" title="Laptop" aria-pressed="false" disabled><i class="fas fa-laptop" aria-hidden="true"></i><br><small>1440×900</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1600x900" type="button" aria-label="Desktop 1600×900" title="Desktop" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>1600×900</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1680x1050" type="button" aria-label="Desktop 1680×1050" title="Desktop" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>1680×1050</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1920x1200" type="button" aria-label="Desktop 1920×1200" title="Desktop" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>1920×1200</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2560x1440" type="button" aria-label="QHD 2560×1440" title="QHD" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>2560×1440</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2560x1600" type="button" aria-label="WQXGA 2560×1600" title="WQXGA" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>2560×1600</small></button>
+                    <button class="aspect-tile preset-size" data-preset="3200x1800" type="button" aria-label="QHD+ 3200×1800" title="QHD+" aria-pressed="false" disabled><i class="fas fa-display" aria-hidden="true"></i><br><small>3200×1800</small></button>
+                    <button class="aspect-tile preset-size" data-preset="3440x1440" type="button" aria-label="Ultrawide 3440×1440" title="Ultrawide" aria-pressed="false" disabled><i class="fas fa-tv" aria-hidden="true"></i><br><small>3440×1440</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2560x1080" type="button" aria-label="Ultrawide 2560×1080" title="Ultrawide" aria-pressed="false" disabled><i class="fas fa-tv" aria-hidden="true"></i><br><small>2560×1080</small></button>
+                    <button class="aspect-tile preset-size" data-preset="5120x1440" type="button" aria-label="Super Ultrawide 5120×1440" title="Super Ultrawide" aria-pressed="false" disabled><i class="fas fa-tv" aria-hidden="true"></i><br><small>5120×1440</small></button>
+                    <button class="aspect-tile preset-size" data-preset="3840x2160" type="button" aria-label="4K 3840×2160" title="4K" aria-pressed="false" disabled><i class="fas fa-tv" aria-hidden="true"></i><br><small>3840×2160</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1280x720" type="button" aria-label="HD 1280×720" title="HD" aria-pressed="false" disabled><i class="fas fa-video" aria-hidden="true"></i><br><small>1280×720</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1200x800" type="button" aria-label="Browser 1200×800" title="Browser" aria-pressed="false" disabled><i class="fas fa-window-maximize" aria-hidden="true"></i><br><small>1200×800</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1024x576" type="button" aria-label="HD (Small) 1024×576" title="HD (Small)" aria-pressed="false" disabled><i class="fas fa-video" aria-hidden="true"></i><br><small>1024×576</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1280x800" type="button" aria-label="Laptop 1280×800" title="Laptop" aria-pressed="false" disabled><i class="fas fa-laptop" aria-hidden="true"></i><br><small>1280×800</small></button>
+                    <button class="aspect-tile preset-size" data-preset="800x600" type="button" aria-label="Standard 800×600" title="Standard" aria-pressed="false" disabled><i class="fas fa-window-maximize" aria-hidden="true"></i><br><small>800×600</small></button>
+                    <button class="aspect-tile preset-size" data-preset="640x480" type="button" aria-label="VGA 640×480" title="VGA" aria-pressed="false" disabled><i class="fas fa-window-maximize" aria-hidden="true"></i><br><small>640×480</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1080x1080" type="button" aria-label="Square 1080×1080" title="Square" aria-pressed="false" disabled><i class="fas fa-square" aria-hidden="true"></i><br><small>1080×1080</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2000x2000" type="button" aria-label="Square 2000×2000" title="Square" aria-pressed="false" disabled><i class="fas fa-square" aria-hidden="true"></i><br><small>2000×2000</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2048x2048" type="button" aria-label="Square 2048×2048" title="Square" aria-pressed="false" disabled><i class="fas fa-square" aria-hidden="true"></i><br><small>2048×2048</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1024x768" type="button" aria-label="Tablet 1024×768" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>1024×768</small></button>
+                    <button class="aspect-tile preset-size" data-preset="768x1024" type="button" aria-label="Tablet 768×1024" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>768×1024</small></button>
+                    <button class="aspect-tile preset-size" data-preset="810x1080" type="button" aria-label="Tablet 810×1080" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>810×1080</small></button>
+                    <button class="aspect-tile preset-size" data-preset="834x1194" type="button" aria-label="iPad Pro 11 834×1194" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>834×1194</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1024x1366" type="button" aria-label="iPad Pro 12.9 1024×1366" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>1024×1366</small></button>
+                    <button class="aspect-tile preset-size" data-preset="2048x2732" type="button" aria-label="iPad Pro 12.9 Retina 2048×2732" title="Tablet" aria-pressed="false" disabled><i class="fas fa-tablet-screen-button" aria-hidden="true"></i><br><small>2048×2732</small></button>
+                    <button class="aspect-tile preset-size" data-preset="720x1280" type="button" aria-label="HP 720×1280" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>720×1280</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1080x1920" type="button" aria-label="HP 1080×1920" title="HP" aria-pressed="true" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1080×1920</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1080x2340" type="button" aria-label="HP 1080×2340" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1080×2340</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1170x2532" type="button" aria-label="iPhone 12/13 1170×2532" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1170×2532</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1125x2436" type="button" aria-label="iPhone X/XS/11 Pro 1125×2436" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1125×2436</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1290x2796" type="button" aria-label="iPhone Pro Max 1290×2796" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1290×2796</small></button>
+                    <button class="aspect-tile preset-size" data-preset="1440x2560" type="button" aria-label="HP QHD 1440×2560" title="HP" aria-pressed="false" disabled><i class="fas fa-mobile-screen-button" aria-hidden="true"></i><br><small>1440×2560</small></button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="straighten-panel" class="mode-panel" role="tabpanel" hidden>
+                <div class="control-row">
+                  <label for="straighten">Sudut (<span id="straighten-value">0°</span>)</label>
+                  <input id="straighten" type="range" min="-180" max="180" step="0.1" value="0" disabled>
+                </div>
+
+                <div class="control-row" style="justify-content:space-between;gap:12px;">
+                  <div class="control-actions" style="margin:0;gap:8px;">
+                    <button id="straighten-apply" class="btn ghost" type="button" disabled><i class="fas fa-rotate-left"></i> crop</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="control-actions crop-actions" aria-label="Aksi Crop">
+                <button id="crop-start" class="btn ghost" type="button" disabled><i class="fas fa-crop"></i> Crop</button>
+                <button id="crop-apply" class="btn" type="button" hidden><i class="fas fa-check"></i> Terapkan</button>
+                <button id="crop-cancel" class="btn ghost" type="button" hidden><i class="fas fa-xmark"></i> Batal</button>
+              </div>
+            </div>
+
+            <div id="resize-section" hidden>
+              <div class="divider" role="separator" aria-hidden="true"></div>
+              <div class="subhead" aria-label="Resize / Scale">Resize / Scale</div>
+
+              <div class="segmented" role="tablist" aria-label="Mode Resize / Scale">
+                <input class="visually-hidden" type="radio" name="resize-mode" id="resize-mode-auto" value="auto" checked>
+                <label class="segmented-btn" for="resize-mode-auto" role="tab" aria-controls="resize-auto">Otomatis (%)</label>
+
+                <input class="visually-hidden" type="radio" name="resize-mode" id="resize-mode-manual" value="manual">
+                <label class="segmented-btn" for="resize-mode-manual" role="tab" aria-controls="resize-manual">Manual (ketik)</label>
+              </div>
+
+              <div id="resize-auto" class="mode-panel" role="tabpanel">
+                <div class="control-row">
+                  <label for="resize-scale">Scale (<span id="resize-scale-value">100%</span>)</label>
+                  <input id="resize-scale" type="range" min="1" max="100" step="1" value="100" disabled>
+                </div>
+              </div>
+
+              <div id="resize-manual" class="mode-panel" role="tabpanel" hidden>
+                <div class="control-grid">
+                  <div class="field">
+                    <label for="resize-width">Lebar (px)</label>
+                    <input id="resize-width" type="number" min="1" step="1" placeholder="-" disabled>
+                  </div>
+                  <div class="field">
+                    <label for="resize-height">Tinggi (px)</label>
+                    <input id="resize-height" type="number" min="1" step="1" placeholder="-" disabled>
+                  </div>
+                </div>
+
+                <div class="control-row">
+                  <label class="check-inline">
+                    <input id="lock-aspect" type="checkbox" checked>
+                    Kunci rasio
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-actions" aria-label="Aksi">
+              <button id="reset-btn" class="btn ghost" type="button"><i class="fas fa-rotate-left"></i> Reset</button>
+            </div>
+          </section>
+        </aside>
+
+        <section class="canvas-area card">
+          <div class="preview-wrap">
+            <div class="card-header">
+              <h2><i class="fas fa-eye"></i> Pratinjau</h2>
+            </div>
+            <div class="preview-container" id="preview-container">
+              <div class="placeholder"><i class="fas fa-image"></i><p>Unggah gambar untuk memulai</p></div>
+              <img id="image-preview" alt="Pratinjau gambar" />
+              <canvas id="zoom-canvas" aria-hidden="true"></canvas>
+
+              <div id="loading-overlay" class="loading-overlay" hidden aria-hidden="true">
+                <div class="loading-inner">
+                  <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+                  <span id="loading-text">Memuat gambar...</span>
+                </div>
+              </div>
+
+              <div id="crop-overlay" class="crop-overlay" hidden aria-hidden="true">
+                <div id="crop-rect" class="crop-rect"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer"></footer>
+    </div>
+  </body>
+</html>
