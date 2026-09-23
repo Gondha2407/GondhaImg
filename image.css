@@ -90,7 +90,6 @@ input[type=range]{width:100%}
 .aspect-tile .ratio{font-size:12px;color:var(--muted)}
 .aspect-tile .shape{display:block;height:26px;width:auto;aspect-ratio:1/1;border-radius:6px;border:2px solid rgba(37,99,235,0.65);background:rgba(37,99,235,0.08)}
 
-/* Crop preset sizes: show ~3 items, swipe sideways, hide scrollbar */
 #crop-preset-grid{
 	display:flex;
 	gap:8px;
@@ -106,7 +105,6 @@ input[type=range]{width:100%}
 #crop-preset-grid::-webkit-scrollbar{width:0;height:0}
 
 #crop-preset-grid .aspect-tile{
-	/* Make roughly 3 visible in the 320px sidebar */
 	flex:0 0 calc((100% - 16px) / 3);
 	max-width:calc((100% - 16px) / 3);
 	min-width:92px;
