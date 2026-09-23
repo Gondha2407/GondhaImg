@@ -1,4 +1,3 @@
-// JS interactions for image.html: upload, drag-drop, preview, zoom, reset
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.querySelector('#file-input');
   const img = document.querySelector('#image-preview');
@@ -77,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let zoomBeforeCrop = 100;
   let isCropDragging = false;
   let cropMode = 'manual';
-  let cropAutoKind = 'ratio'; // ratio | preset
+  let cropAutoKind = 'ratio';
   let cropAspectValue = '1:1';
   let cropPresetValue = '1080x1920';
   let isPresetPreviewing = false;
@@ -90,8 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let cropW = 0;
   let cropH = 0;
 
-  // Straighten uses an absolute slider value.
-  // We track a committed base angle so the preview/apply uses only the delta.
   let straightenAngle = 0;
   let straightenBaseAngle = 0;
 
@@ -163,7 +160,6 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         URL.revokeObjectURL(presetPreviewObjectUrl);
       } catch {
-        // ignore
       }
     }
     presetPreviewObjectUrl = null;
@@ -237,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (resizeSection) resizeSection.hidden = true;
 
-    // default mode
     if (resizeModeAuto) resizeModeAuto.checked = true;
     if (resizeAutoPanel) resizeAutoPanel.hidden = false;
     if (resizeManualPanel) resizeManualPanel.hidden = true;
@@ -283,7 +278,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function setImgTransform(scale) {
     const s = Number(scale) || 1;
     const a = getStraightenDelta();
-    // Keep rotate + scale combined (order matters).
     img.style.transform = a ? `rotate(${a}deg) scale(${s})` : `scale(${s})`;
   }
 
@@ -303,7 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
       cancelCrop({ restoreZoom: false });
     }
 
-    // Revert to original uploaded source.
     if (img) {
       img.style.transform = '';
       img.style.width = '';
@@ -317,7 +310,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (placeholder) placeholder.style.display = 'none';
 
-    // Reset zoom UI
     if (zoom) zoom.value = '100';
     if (zoomValue) zoomValue.textContent = '100%';
     if (zoomInput) zoomInput.value = '100';
@@ -325,25 +317,20 @@ document.addEventListener('DOMContentLoaded', () => {
     panX = 0;
     panY = 0;
 
-    // Ensure future preset resizes always resample from the original.
     resampleBaseFile = originalFile;
 
-    // Reset straighten preview
     straightenAngle = 0;
     straightenBaseAngle = 0;
     if (straightenInput) straightenInput.value = '0';
     if (straightenValueEl) straightenValueEl.textContent = '0°';
 
-    // Reset resize UI to default mode and resync from the current fitted size.
     if (resizeModeAuto) resizeModeAuto.checked = true;
     setResizeMode('auto');
 
-    // Switch back to original URL (and revoke derived URL if any).
     if (currentObjectUrl && currentObjectUrl !== originalObjectUrl) {
       try {
         URL.revokeObjectURL(currentObjectUrl);
       } catch {
-        // ignore
       }
     }
     currentObjectUrl = originalObjectUrl;
@@ -351,7 +338,6 @@ document.addEventListener('DOMContentLoaded', () => {
       img.src = originalObjectUrl;
     }
 
-    // After clearing width/height and/or swapping src, resync controls.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       syncControlsFromRenderedSize();
       if (img) img.style.transform = 'scale(1)';
@@ -368,7 +354,6 @@ document.addEventListener('DOMContentLoaded', () => {
     cropOverlay.hidden = !active;
     cropApplyBtn.disabled = true;
 
-    // Keep zoom controls active during crop.
     if (resizeScale) resizeScale.disabled = active || !naturalWidth || !naturalHeight;
     if (resizeWidth) resizeWidth.disabled = active || !naturalWidth || !naturalHeight;
     if (resizeHeight) resizeHeight.disabled = active || !naturalWidth || !naturalHeight;
@@ -380,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setCropMode(mode) {
-    // Leaving preset preview context should revert to the real image.
     if (isPresetPreviewing && !(mode === 'auto' && cropAutoKind === 'preset')) {
       cancelPresetPreview({ restoreZoom: false });
     }
@@ -463,13 +447,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const bounds = getImageBoundsInContainer();
     if (!bounds) return;
 
-    // Preset size is applied as output canvas size (like editgambar.html), not a crop rect.
     if (cropAutoKind === 'preset') return;
 
     const aspect = parseAspect(cropAspectValue);
     if (!aspect) return;
 
-    // Max centered rect with requested aspect inside the image bounds.
     let w = bounds.width;
     let h = w / aspect;
     if (h > bounds.height) {
@@ -516,7 +498,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasImage = Boolean(naturalWidth && naturalHeight && currentObjectUrl);
     if (!hasImage) return;
 
-    // Preset size should be previewed first; only commit when user clicks Terapkan.
     if (cropMode === 'auto' && cropAutoKind === 'preset') {
       applyPresetSize();
       return;
@@ -528,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     zoomBeforeCrop = currentZoomPercent || 100;
 
-    // Keep current zoom, but force the <img> view while cropping.
     isCropping = true;
     applyZoomView(currentZoomPercent || Number(zoomInput?.value || zoom?.value || 100) || 100);
     isCropDragging = false;
@@ -577,9 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let w = Math.min(Math.abs(x - sx), maxW);
     let h = Math.min(Math.abs(y - sy), maxH);
 
-    // Fit to aspect within available space.
     if (w / Math.max(1, h) > aspect) {
-      // too wide => height drives
       h = Math.min(h, maxH);
       w = h * aspect;
       if (w > maxW) {
@@ -587,7 +565,6 @@ document.addEventListener('DOMContentLoaded', () => {
         h = w / aspect;
       }
     } else {
-      // too tall => width drives
       w = Math.min(w, maxW);
       h = w / aspect;
       if (h > maxH) {
@@ -617,7 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const h = preset.h;
     if (!w || !h) return;
 
-    // Always resize from a stable base (like editgambar.html), not from the latest resized output.
     const sourceFile = resampleBaseFile || originalFile;
     if (!sourceFile) {
       return;
@@ -626,7 +602,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const run = async () => {
       let source = null;
 
-      // Prefer ImageBitmap decoding for best quality & speed.
       try {
         if ('createImageBitmap' in window) {
           source = await createImageBitmap(sourceFile);
@@ -668,10 +643,8 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         ctx.imageSmoothingQuality = 'high';
       } catch {
-        // ignore
       }
 
-      // Same behavior as editgambar.html "Ukuran Background": stretch image to target.
       ctx.drawImage(source, 0, 0, w, h);
       if (source && source.close) source.close();
 
@@ -682,7 +655,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const fileName = `preset-${w}x${h}-${Date.now()}.png`;
         const outFile = new File([blob], fileName, { type: blob.type || 'image/png' });
 
-        // IMPORTANT: keep resampleBaseFile unchanged so changing presets doesn't get progressively worse.
         loadFile(outFile, { setAsOriginal: false, setAsResampleBase: false });
       }, 'image/png');
     };
@@ -692,12 +664,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setPresetPreviewUi(active) {
     if (!cropStartBtn || !cropCancelBtn) return;
-    // Keep the "Terapkan" button visible (cropStartBtn) and show Cancel while previewing.
     cropStartBtn.hidden = false;
     cropStartBtn.disabled = !(naturalWidth && naturalHeight);
     cropCancelBtn.hidden = !active;
     if (!active && cropMode !== 'manual') {
-      // keep cancel hidden when not actively previewing
       cropCancelBtn.hidden = true;
     }
   }
@@ -710,7 +680,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           URL.revokeObjectURL(presetPreviewObjectUrl);
         } catch {
-          // ignore
         }
       }
       presetPreviewObjectUrl = null;
@@ -721,19 +690,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const snap = presetPreviewSnapshot;
 
-    // Revoke the preview URL and restore previous URL.
     if (presetPreviewObjectUrl) {
       try {
         URL.revokeObjectURL(presetPreviewObjectUrl);
       } catch {
-        // ignore
       }
     }
     presetPreviewObjectUrl = null;
     isPresetPreviewing = false;
     presetPreviewSnapshot = null;
 
-    // Restore key rendering state.
     baseDisplayWidth = snap.baseDisplayWidth || baseDisplayWidth;
     baseDisplayHeight = snap.baseDisplayHeight || baseDisplayHeight;
     panX = snap.panX || 0;
@@ -779,7 +745,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const h = preset.h;
     if (!w || !h) return;
 
-    // Snapshot current state once.
     if (!isPresetPreviewing) {
       presetPreviewSnapshot = {
         currentObjectUrl,
@@ -795,7 +760,6 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
-    // Always preview from the stable base (same logic as applyPresetSize).
     const sourceFile = resampleBaseFile || originalFile;
     if (!sourceFile) return;
 
@@ -848,12 +812,10 @@ document.addEventListener('DOMContentLoaded', () => {
       canvas.toBlob((blob) => {
         if (!blob) return;
 
-        // Replace prior preview URL.
         if (presetPreviewObjectUrl) {
           try {
             URL.revokeObjectURL(presetPreviewObjectUrl);
           } catch {
-            // ignore
           }
         }
 
@@ -872,7 +834,6 @@ document.addEventListener('DOMContentLoaded', () => {
           setPresetPreviewUi(true);
 
           requestAnimationFrame(() => {
-            // Keep current zoom setting.
             const z = Number(zoomInput?.value || zoom?.value || 100) || 100;
             applyZoomView(z);
             syncControlsFromRenderedSize();
@@ -943,7 +904,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const h = Number.isFinite(hFromStyle) && hFromStyle > 0 ? hFromStyle : baseDisplayHeight;
     if (w > 0 && h > 0) return { width: w, height: h };
 
-    // last resort
     if (img && img.style.display !== 'none') {
       captureBaseDisplaySizeFromImg();
       if (baseDisplayWidth && baseDisplayHeight) {
@@ -958,8 +918,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const base = getBaseDisplaySize();
     if (!base) return;
 
-    // Keep canvas buffer at base size (prevents huge allocations).
-    // Apply zoom using transform so layout size stays constant.
     const bw = Math.max(1, Math.round(base.width));
     const bh = Math.max(1, Math.round(base.height));
 
@@ -1010,11 +968,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!img) return;
 
-    // If we have an image loaded, keep placeholder hidden.
     if (placeholder && currentObjectUrl) placeholder.style.display = 'none';
 
     if (v > 100 && zoomCanvas && !isCropping && !getStraightenDelta()) {
-      // Capture base size BEFORE hiding the image.
       if (img.style.display !== 'none') captureBaseDisplaySizeFromImg();
 
       img.style.transform = '';
@@ -1118,7 +1074,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!hasImage) return;
 
-    // Switching modes should not resize; just sync UI to current rendered size.
     if (sync) syncControlsFromRenderedSize();
   }
 
@@ -1134,7 +1089,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const v = Number(zoom?.value || 100);
     if (v > 100) {
-      // Keep zoom view crisp when resizing.
       currentZoomPercent = v;
       panX = 0;
       panY = 0;
@@ -1172,7 +1126,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (h && (!widthValue || !Number.isFinite(Number(widthValue)))) {
         w = h * aspect;
       } else {
-        // default: derive height from width
         h = w / aspect;
       }
     }
@@ -1196,7 +1149,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (setAsOriginal && file.size > MAX_BYTES) return;
 
-    // Any real load commits the state; clear any temporary preset preview.
     if (isPresetPreviewing) {
       isPresetPreviewing = false;
       presetPreviewSnapshot = null;
@@ -1204,7 +1156,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           URL.revokeObjectURL(presetPreviewObjectUrl);
         } catch {
-          // ignore
         }
       }
       presetPreviewObjectUrl = null;
@@ -1231,7 +1182,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (setAsOriginal) {
-      // Show loading only for user uploads (initial decode).
       setLoading(true, 'Memuat gambar...');
 
       cleanupAllObjectUrls();
@@ -1241,7 +1191,6 @@ document.addEventListener('DOMContentLoaded', () => {
       originalFile = file;
       resampleBaseFile = file;
 
-      // New base image => reset straighten history.
       straightenAngle = 0;
       straightenBaseAngle = 0;
       if (straightenInput) straightenInput.value = '0';
@@ -1256,7 +1205,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     img.onload = () => {
-      // Hide upload loading overlay once the image is ready.
       hideLoading();
       if (placeholder) placeholder.style.display = 'none';
       img.style.display = 'block';
@@ -1279,8 +1227,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (straightenInput) straightenInput.disabled = false;
       if (straightenApplyBtn) straightenApplyBtn.disabled = false;
 
-      // Preserve the currently selected crop mode UI (Manual/Aspect Ratio/Luruskan)
-      // even when the image source is swapped (e.g., Reset back to original).
       setCropMode(cropMode);
       if (cropApplyBtn) {
         cropApplyBtn.hidden = true;
@@ -1290,12 +1236,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cropOverlay) cropOverlay.hidden = true;
       if (previewContainer) previewContainer.classList.remove('cropping');
 
-      // enable according to current mode
       const mode = preserve ? preserve.mode : (resizeModeManual?.checked ? 'manual' : 'auto');
       setResizeMode(mode, { sync: !preserve });
 
       if (preserve) {
-        // Restore previous rendered size + UI values so Straighten doesn't alter Resize/Scale.
         baseDisplayWidth = preserve.baseW || baseDisplayWidth;
         baseDisplayHeight = preserve.baseH || baseDisplayHeight;
 
@@ -1315,11 +1259,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resizeHeight && preserve.height != null) resizeHeight.value = String(preserve.height);
         if (lockAspect) lockAspect.checked = Boolean(preserve.lock);
       } else {
-        // Initialize controls based on the current fitted/rendered size (not forced 100%).
         requestAnimationFrame(() => requestAnimationFrame(syncControlsFromRenderedSize));
       }
 
-      // Apply pixelated rendering if currently zoomed in.
       requestAnimationFrame(() => {
         captureBaseDisplaySizeFromImg();
         const z = Number(zoom?.value || 100);
@@ -1391,7 +1333,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const v = Math.max(10, Number.isFinite(raw) ? raw : 100);
       if (zoomValue) zoomValue.textContent = String(Math.round(v)) + '%';
 
-      // Expand slider max dynamically to avoid a fixed upper cap.
       const maxNow = Number(zoom?.max || 0);
       if (zoom && (!maxNow || v > maxNow)) {
         const nextMax = Math.max(500, Math.ceil(v / 100) * 100);
@@ -1413,9 +1354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const current = Math.max(10, Number(zoomInput?.value || zoom?.value || 100) || 100);
         const direction = Math.sign(e.deltaY);
 
-        // Smooth-ish zoom: wheel up => zoom in, wheel down => zoom out
         let next = current * (direction > 0 ? 0.93 : 1.07);
-        // Keep numbers friendly
         next = Math.round(next);
         if (next < 10) next = 10;
 
@@ -1601,7 +1540,6 @@ document.addEventListener('DOMContentLoaded', () => {
       cropPresetValue = value;
       setSelectedPresetTile(value);
 
-      // Preview first; only commit when user clicks Terapkan.
       if (cropMode === 'auto' && cropAutoKind === 'preset' && !isCropping) {
         previewPresetSize();
         return;
@@ -1629,7 +1567,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Initialize default selection
   setSelectedAspectTile(cropAspectValue);
   setSelectedPresetTile(cropPresetValue);
   updateCropAutoKindUI();
@@ -1706,7 +1643,6 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         cropOverlay.releasePointerCapture?.(e.pointerId);
       } catch {
-        // ignore
       }
     };
     cropOverlay.addEventListener('pointerup', endCropDrag);
